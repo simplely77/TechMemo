@@ -29,6 +29,8 @@ func newAiProcessLog(db *gorm.DB, opts ...gen.DOOption) aiProcessLog {
 	tableName := _aiProcessLog.aiProcessLogDo.TableName()
 	_aiProcessLog.ALL = field.NewAsterisk(tableName)
 	_aiProcessLog.ID = field.NewInt64(tableName, "id")
+	_aiProcessLog.SourceNoteID = field.NewInt64(tableName, "source_note_id")
+	_aiProcessLog.TaskID = field.NewString(tableName, "task_id")
 	_aiProcessLog.TargetType = field.NewString(tableName, "target_type")
 	_aiProcessLog.TargetID = field.NewInt64(tableName, "target_id")
 	_aiProcessLog.ProcessType = field.NewString(tableName, "process_type")
@@ -44,14 +46,16 @@ func newAiProcessLog(db *gorm.DB, opts ...gen.DOOption) aiProcessLog {
 type aiProcessLog struct {
 	aiProcessLogDo aiProcessLogDo
 
-	ALL         field.Asterisk
-	ID          field.Int64
-	TargetType  field.String
-	TargetID    field.Int64
-	ProcessType field.String
-	ModelName   field.String
-	Status      field.String
-	CreatedAt   field.Time
+	ALL          field.Asterisk
+	ID           field.Int64
+	SourceNoteID field.Int64
+	TaskID       field.String
+	TargetType   field.String
+	TargetID     field.Int64
+	ProcessType  field.String
+	ModelName    field.String
+	Status       field.String
+	CreatedAt    field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -69,6 +73,8 @@ func (a aiProcessLog) As(alias string) *aiProcessLog {
 func (a *aiProcessLog) updateTableName(table string) *aiProcessLog {
 	a.ALL = field.NewAsterisk(table)
 	a.ID = field.NewInt64(table, "id")
+	a.SourceNoteID = field.NewInt64(table, "source_note_id")
+	a.TaskID = field.NewString(table, "task_id")
 	a.TargetType = field.NewString(table, "target_type")
 	a.TargetID = field.NewInt64(table, "target_id")
 	a.ProcessType = field.NewString(table, "process_type")
@@ -103,8 +109,10 @@ func (a *aiProcessLog) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 }
 
 func (a *aiProcessLog) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 7)
+	a.fieldMap = make(map[string]field.Expr, 9)
 	a.fieldMap["id"] = a.ID
+	a.fieldMap["source_note_id"] = a.SourceNoteID
+	a.fieldMap["task_id"] = a.TaskID
 	a.fieldMap["target_type"] = a.TargetType
 	a.fieldMap["target_id"] = a.TargetID
 	a.fieldMap["process_type"] = a.ProcessType

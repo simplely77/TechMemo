@@ -1,0 +1,44 @@
+package dao
+
+type GetNotesParams struct {
+	UserID     int64
+	CategoryID int64
+	TagIDs     []int64
+	Keyword    string
+	NoteType   string
+	Sort       string
+	Limit      int64
+	Offset     int64
+}
+
+type UpdateNoteParams struct {
+	Title      *string
+	ContentMD  *string
+	CategoryID *int64
+	NoteType   *string
+}
+
+type CreateAILogParams struct {
+	SourceNoteID int64
+	TaskID       string
+	TargetType   string
+	TargetID     int64
+	ProcessType  string
+	ModelName    string
+	Status       string
+}
+
+type GetKnowledgePointsParams struct {
+	UserID        int64
+	SourceNoteID  int64
+	Keyword       string
+	MinImportance float64
+	Page          int64
+	PageSize      int64
+}
+
+type UpdateKnowledgePointParams struct {
+	Name            string
+	Description     string
+	ImportanceScore float64
+}

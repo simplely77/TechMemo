@@ -12,13 +12,15 @@ const TableNameAiProcessLog = "ai_process_log"
 
 // AiProcessLog mapped from table <ai_process_log>
 type AiProcessLog struct {
-	ID          int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	TargetType  string    `gorm:"column:target_type;not null" json:"target_type"`
-	TargetID    int64     `gorm:"column:target_id;not null" json:"target_id"`
-	ProcessType string    `gorm:"column:process_type;not null" json:"process_type"`
-	ModelName   string    `gorm:"column:model_name;not null" json:"model_name"`
-	Status      string    `gorm:"column:status;default:success" json:"status"`
-	CreatedAt   time.Time `gorm:"column:created_at" json:"created_at"`
+	ID           int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
+	SourceNoteID int64     `gorm:"column:source_note_id" json:"source_note_id"`
+	TaskID       string    `gorm:"column:task_id;not null" json:"task_id"`
+	TargetType   string    `gorm:"column:target_type;not null" json:"target_type"`
+	TargetID     int64     `gorm:"column:target_id;not null" json:"target_id"`
+	ProcessType  string    `gorm:"column:process_type;not null" json:"process_type"`
+	ModelName    string    `gorm:"column:model_name;not null" json:"model_name"`
+	Status       string    `gorm:"column:status;default:success" json:"status"`
+	CreatedAt    time.Time `gorm:"column:created_at;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 // TableName AiProcessLog's table name

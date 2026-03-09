@@ -8,8 +8,9 @@ const TableNameCategory = "category"
 
 // Category mapped from table <category>
 type Category struct {
-	ID   int64  `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	Name string `gorm:"column:name;not null" json:"name"`
+	ID     int64  `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
+	Name   string `gorm:"column:name;not null" json:"name"`
+	UserID int64  `gorm:"column:user_id;not null" json:"user_id"`
 }
 
 // TableName Category's table name

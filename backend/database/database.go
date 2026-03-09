@@ -12,6 +12,7 @@ import (
 )
 
 var Q *query.Query
+var DB *gorm.DB
 
 func InitDB() error {
 	cfg := config.AppConfig.Database
@@ -29,6 +30,7 @@ func InitDB() error {
 	}
 
 	Q = query.Use(db)
+	DB = db
 
 	log.Println("Database connected successfully")
 	return nil

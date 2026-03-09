@@ -2,6 +2,7 @@ package router
 
 import (
 	"techmemo/backend/bootstrap"
+	"techmemo/backend/handler"
 	"techmemo/backend/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -21,9 +22,11 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	// 将 docs 目录暴露为静态资源
+	r.Static("/swagger", "./docs")
 
-	// Swagger 文档
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// Swagger 文档路由
+	r.GET("/swagger-ui/*filepath", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("/swagger/swagger.json")))
 
 	// API v1 路由组
 	v1 := r.Group("/api/v1")
@@ -31,65 +34,62 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 		// 认证路由（无需 JWT）
 		auth := v1.Group("/auth")
 		{
-			auth.POST("/register", nil) // TODO: 实现注册
-			auth.POST("/login", nil)    // TODO: 实现登录
+			auth.POST("/register", handler.HandlerRegister(app.UserService))
+			auth.POST("/login", handler.HandlerLogin(app.UserService))
 		}
 
 		// 需要认证的路由
 		authorized := v1.Group("")
-		authorized.Use(middleware.JWTAuth())
+		authorized.Use(middleware.JWTAuth(app.UserService))
 		{
 			// 用户信息
-			authorized.GET("/auth/profile", nil) // TODO: 获取用户信息
+			authorized.GET("/auth/profile", handler.HandlerProfile(app.UserService))
 
 			// 分类管理
 			categories := authorized.Group("/categories")
 			{
-				categories.GET("", nil)        // 获取分类列表
-				categories.POST("", nil)       // 创建分类
-				categories.PUT("/:id", nil)    // 更新分类
-				categories.DELETE("/:id", nil) // 删除分类
+				categories.GET("", handler.HandlerGetCategorys(app.CategoryService))          // 获取分类列表
+				categories.POST("", handler.HandlerCreateCategory(app.CategoryService))       // 创建分类
+				categories.PUT("/:id", handler.HandlerUpdateCategory(app.CategoryService))    // 更新分类
+				categories.DELETE("/:id", handler.HandlerDeleteCategory(app.CategoryService)) // 删除分类
 			}
 
 			// 标签管理
 			tags := authorized.Group("/tags")
 			{
-				tags.GET("", nil)        // 获取标签列表
-				tags.POST("", nil)       // 创建标签
-				tags.DELETE("/:id", nil) // 删除标签
+				tags.GET("", handler.HandlerGetTags(app.TagService))          // 获取标签列表
+				tags.POST("", handler.HandlerCreateTag(app.TagService))       // 创建标签
+				tags.PUT("/:id", handler.HandlerUpdateTag(app.TagService))    // 更新标签
+				tags.DELETE("/:id", handler.HandlerDeleteTag(app.TagService)) // 删除标签
 			}
 
 			// 笔记管理
 			notes := authorized.Group("/notes")
 			{
-				notes.GET("", nil)                                   // 获取笔记列表
-				notes.POST("", nil)                                  // 创建笔记
-				notes.GET("/:id", nil)                               // 获取笔记详情
-				notes.PUT("/:id", nil)                               // 更新笔记
-				notes.DELETE("/:id", nil)                            // 删除笔记
-				notes.GET("/:id/versions", nil)                      // 获取版本历史
-				notes.POST("/:id/versions/:version_id/restore", nil) // 恢复版本
-				notes.GET("/:id/summary", nil)                       // 获取 AI 摘要
-				notes.POST("/:id/extract-knowledge", nil)            // 提取知识点
+				notes.GET("", handler.HandlerGetNotes(app.NoteService))       // 获取笔记列表
+				notes.POST("", handler.HandlerCreateNote(app.NoteService))    // 创建笔记
+				notes.GET("/:id", handler.HandlerGetNote(app.NoteService))    // 获取笔记详情
+				notes.PUT("/:id", handler.HandlerUpdateNote(app.NoteService)) // 更新笔记
+				notes.PUT("/:id/tags", handler.HandlerUpdateNoteTags(app.NoteService))
+				notes.DELETE("/:id", handler.HandlerDeleteNote(app.NoteService))                             // 删除笔记
+				notes.GET("/:id/versions", handler.HandlerGetNoteVersions(app.NoteService))                  // 获取版本历史
+				notes.POST("/:id/versions/:version_id/restore", handler.HandlerRestoreNote(app.NoteService)) // 恢复版本                                                   // 提取知识点
 			}
 
 			// 知识点管理
 			knowledge := authorized.Group("/knowledge-points")
 			{
-				knowledge.GET("", nil)        // 获取知识点列表
-				knowledge.GET("/:id", nil)    // 获取知识点详情
-				knowledge.PUT("/:id", nil)    // 更新知识点
-				knowledge.DELETE("/:id", nil) // 删除知识点
+				knowledge.GET("", handler.HandlerGetKnowledgePoints(app.KnowledgePointService))          // 获取知识点列表
+				knowledge.GET("/:id", handler.HandlerGetKnowledgePoint(app.KnowledgePointService))       // 获取知识点详情
+				knowledge.PUT("/:id", handler.HandlerUpdateKnowledgePoint(app.KnowledgePointService))    // 更新知识点
+				knowledge.DELETE("/:id", handler.HandlerDeleteKnowledgePoint(app.KnowledgePointService)) // 删除知识点
 			}
-
-			// 知识点关系
-			authorized.POST("/knowledge-relations", nil) // 创建知识点关系
 
 			// AI 处理
 			ai := authorized.Group("/ai")
 			{
-				ai.POST("/process/note/:id", nil) // 触发笔记 AI 处理
-				ai.GET("/logs", nil)              // 获取 AI 处理日志
+				ai.POST("/note/:id", handler.HandlerProcessNoteAI(app.NoteService, app.AIService)) // 触发笔记 AI 处理
+				ai.GET("/note/:id/status", handler.HandlerGetNoteAIStatus(app.AIService))          // 获取 AI 处理日志
 			}
 
 			// 思维导图

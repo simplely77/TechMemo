@@ -33,10 +33,17 @@ type JWTConfig struct {
 	ExpireHour int    `mapstructure:"expire_hour"`
 }
 
+// AIConfig 拆分对话和向量配置
 type AIConfig struct {
-	Provider string `mapstructure:"provider"` // openai, claude, etc.
+	Chat      ProviderConfig `mapstructure:"chat"`      // 对话用
+	Embedding ProviderConfig `mapstructure:"embedding"` // 向量用
+}
+
+type ProviderConfig struct {
+	Provider string `mapstructure:"provider"` // deepseek, openai, azure
 	APIKey   string `mapstructure:"api_key"`
 	Model    string `mapstructure:"model"`
+	BaseURL  string `mapstructure:"base_url"`
 }
 
 // 全局配置

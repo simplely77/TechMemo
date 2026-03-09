@@ -8,8 +8,9 @@ const TableNameTag = "tag"
 
 // Tag mapped from table <tag>
 type Tag struct {
-	ID   int64  `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	Name string `gorm:"column:name;not null" json:"name"`
+	ID     int64  `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
+	Name   string `gorm:"column:name;not null" json:"name"`
+	UserID int64  `gorm:"column:user_id;not null" json:"user_id"`
 }
 
 // TableName Tag's table name

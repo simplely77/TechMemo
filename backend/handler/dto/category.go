@@ -1,8 +1,9 @@
 package dto
 
 type Category struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	UserID int64  `json:"user_id"`
 }
 
 type GetCategoriesResp struct {
