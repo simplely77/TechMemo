@@ -634,7 +634,7 @@ Authorization: Bearer {token}
   "title": "Python 装饰器完整笔记",
   "content_md": "# 装饰器\n更新后的内容...",
   "category_id": 1,
-  "tag_ids": [1, 2]
+  "note_type": "knowledge"
 }
 ```
 
@@ -711,15 +711,8 @@ Authorization: Bearer {token}
 
 ### 5.1 触发笔记 AI 处理
 ```
-POST /ai/process/note/:id
+POST /ai/note/:id
 Authorization: Bearer {token}
-```
-
-**请求参数**
-```json
-{
-  "process_types": ["summarize", "extract", "embedding"]
-}
 ```
 
 **响应示例**
@@ -728,15 +721,16 @@ Authorization: Bearer {token}
   "code": 200,
   "message": "AI 处理任务已提交",
   "data": {
+    "note_id": 1,
     "task_id": "task_123456",
-    "status": "processing"
+    "status": "pending",
   }
 }
 ```
 
-### 5.2 获取笔记 AI 摘要
+### 5.2 获取任务处理状态
 ```
-GET /notes/:id/summary
+GET /ai/note/:id/status
 Authorization: Bearer {token}
 ```
 
@@ -747,38 +741,11 @@ Authorization: Bearer {token}
   "message": "success",
   "data": {
     "note_id": 1,
-    "summary": "本笔记介绍了 Python 装饰器的基本概念、使用方法和应用场景...",
-    "generated_at": "2026-01-13T11:00:00Z"
-  }
-}
-```
-
-### 5.3 从笔记提取知识点
-```
-POST /notes/:id/extract-knowledge
-Authorization: Bearer {token}
-```
-
-**响应示例**
-```json
-{
-  "code": 200,
-  "message": "知识点提取成功",
-  "data": {
-    "knowledge_points": [
-      {
-        "id": 1,
-        "name": "装饰器定义",
-        "description": "装饰器是一种设计模式，可以在不修改原函数的情况下增加功能",
-        "importance_score": 0.9
-      },
-      {
-        "id": 2,
-        "name": "装饰器语法",
-        "description": "使用 @decorator_name 语法糖来应用装饰器",
-        "importance_score": 0.85
-      }
-    ]
+    "status": "completed",
+    "progress": {
+      "extract": "pending",
+      "embedding": "pending"
+    },
   }
 }
 ```
@@ -858,109 +825,6 @@ Authorization: Bearer {token}
   }
 }
 ```
-
-### 6.3 更新知识点
-```
-PUT /knowledge-points/:id
-Authorization: Bearer {token}
-```
-
-**请求参数**
-```json
-{
-  "name": "装饰器定义（更新）",
-  "description": "更新后的描述",
-  "importance_score": 0.95
-}
-```
-
-### 6.4 删除知识点
-```
-DELETE /knowledge-points/:id
-Authorization: Bearer {token}
-```
-
-### 6.5 创建知识点关系
-```
-POST /knowledge-relations
-Authorization: Bearer {token}
-```
-
-**请求参数**
-```json
-{
-  "from_knowledge_id": 1,
-  "to_knowledge_id": 2,
-  "relation_type": "prerequisite"
-}
-```
-
-**关系类型说明**
-- `prerequisite`: 前置依赖（需要先学习 from 才能理解 to）
-- `related`: 相关知识（两个知识点有关联）
-- `extension`: 扩展知识（to 是 from 的深入延伸）
-
----
-
-## 7. 思维导图模块
-
-### 7.1 生成思维导图
-```
-POST /mindmap/generate
-Authorization: Bearer {token}
-```
-
-**请求参数**
-```json
-{
-  "note_ids": [1, 2, 3, 5],
-  "include_relations": true
-}
-```
-
-**响应示例**
-```json
-{
-  "code": 200,
-  "message": "思维导图生成成功",
-  "data": {
-    "nodes": [
-      {
-        "id": "k1",
-        "type": "knowledge",
-        "name": "装饰器定义",
-        "importance_score": 0.9,
-        "source_note_id": 1
-      },
-      {
-        "id": "k2",
-        "type": "knowledge",
-        "name": "闭包",
-        "importance_score": 0.85,
-        "source_note_id": 2
-      }
-    ],
-    "edges": [
-      {
-        "from": "k2",
-        "to": "k1",
-        "relation_type": "prerequisite",
-        "label": "前置依赖"
-      }
-    ]
-  }
-}
-```
-
-### 7.2 获取全局知识图谱
-```
-GET /mindmap/global
-Authorization: Bearer {token}
-```
-
-**查询参数**
-- `category_id` (可选): 限定分类
-- `min_importance` (可选): 最低重要程度阈值
 
 ---
 
@@ -1051,109 +915,6 @@ Authorization: Bearer {token}
     ],
     "model": "gpt-4",
     "generated_at": "2026-01-13T12:00:00Z"
-  }
-}
-```
-
-### 8.3 关键词搜索
-```
-GET /search/keyword
-Authorization: Bearer {token}
-```
-
-**查询参数**
-- `q`: 搜索关键词
-- `search_in`: 搜索范围（title/content/both），默认 both
-- `category_id` (可选): 限定分类
-- `tag_ids` (可选): 限定标签，逗号分隔
-- `page` (可选): 页码
-- `page_size` (可选): 每页数量
-
----
-
-## 9. 复习推荐模块
-
-### 9.1 获取复习推荐列表
-```
-GET /review/recommendations
-Authorization: Bearer {token}
-```
-
-**查询参数**
-- `count` (可选): 推荐数量，默认 10
-
-**响应示例**
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "recommendations": [
-      {
-        "knowledge_id": 1,
-        "knowledge_name": "装饰器定义",
-        "importance_score": 0.9,
-        "last_review_at": "2026-01-10T10:00:00Z",
-        "review_count": 3,
-        "reason": "距离上次复习已 3 天，建议复习"
-      }
-    ]
-  }
-}
-```
-
-### 9.2 记录复习结果
-```
-POST /review/record
-Authorization: Bearer {token}
-```
-
-**请求参数**
-```json
-{
-  "knowledge_id": 1,
-  "mastered": true
-}
-```
-
----
-
-## 10. AI 处理日志模块
-
-### 10.1 获取 AI 处理日志
-```
-GET /ai/logs
-Authorization: Bearer {token}
-```
-
-**查询参数**
-- `target_type` (可选): note/knowledge
-- `target_id` (可选): 目标对象 ID
-- `process_type` (可选): 处理类型
-- `status` (可选): success/failed
-- `page` (可选): 页码
-- `page_size` (可选): 每页数量
-
-**响应示例**
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "logs": [
-      {
-        "id": 1,
-        "target_type": "note",
-        "target_id": 1,
-        "process_type": "summarize",
-        "model_name": "gpt-4",
-        "status": "success",
-        "created_at": "2026-01-13T11:00:00Z"
-      }
-    ],
-    "total": 50,
-    "page": 1,
-    "page_size": 20
   }
 }
 ```

@@ -13,13 +13,15 @@ CREATE TABLE "user" (
 -- 2. 分类表
 CREATE TABLE category (
     id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL
+    name VARCHAR(50) NOT NULL,
+    user_id BIGINT NOT NULL
 );
 
 -- 3. 标签表
 CREATE TABLE tag (
     id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL
+    name VARCHAR(50) NOT NULL,
+    user_id BIGINT NOT NULL
 );
 
 -- 4. 笔记表
@@ -72,9 +74,11 @@ CREATE TABLE knowledge_relation (
 -- 9. AI 处理日志表
 CREATE TABLE ai_process_log (
     id BIGSERIAL PRIMARY KEY,
+    source_note_id BIGINT NOT NULL,
+    task_id VARCHAR(64) NOT NULL,
     target_type VARCHAR(20) NOT NULL,   -- note / knowledge
     target_id BIGINT NOT NULL,
-    process_type VARCHAR(20) NOT NULL,  -- summarize / extract / embedding
+    process_type VARCHAR(20) NOT NULL,  -- extract / embedding
     model_name VARCHAR(50) NOT NULL,
     status VARCHAR(20) DEFAULT 'success',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
