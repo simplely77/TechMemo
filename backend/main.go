@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	aiclient "techmemo/backend/ai/client"
+	"techmemo/backend/ai/queue"
 	"techmemo/backend/ai/worker"
 	"techmemo/backend/bootstrap"
 	"techmemo/backend/config"
@@ -29,11 +31,22 @@ func main() {
 
 	app := bootstrap.InitApp()
 
-	app.AIService.SetQueue(worker.NewMemoryQueue(100))
+	var q queue.Queue
+	redisCfg := config.AppConfig.Redis
+	if redisCfg.Enabled {
+		addr := fmt.Sprintf("%s:%s", redisCfg.Host, redisCfg.Port)
+		q = queue.NewRedisQueue(addr, redisCfg.Password, redisCfg.DB)
+		log.Println("使用 Redis 队列")
+	} else {
+		q = queue.NewMemoryQueue(100)
+		log.Println("使用内存队列（仅开发环境）")
+	}
+	app.AIService.SetQueue(q)
 
 	aiClient := aiclient.NewOpenAIClientFromConfig(config.AppConfig)
+	app.AIService.SetAIClient(aiClient)
 
-	handler := worker.NewHandler(app.AIService, app.AIDao, app.NoteDao, aiClient)
+	handler := worker.NewHandler(app.AIService)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()

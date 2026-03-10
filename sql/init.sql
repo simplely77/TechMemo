@@ -2,6 +2,9 @@
 -- TechMemo 数据库表
 -- =========================================
 
+-- 安装插件
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- 1. 用户表
 CREATE TABLE "user" (
     id BIGSERIAL PRIMARY KEY,
@@ -89,7 +92,7 @@ CREATE TABLE embedding (
     id BIGSERIAL PRIMARY KEY,
     target_type VARCHAR(20) NOT NULL,  -- note / knowledge
     target_id BIGINT NOT NULL,
-    vector vector(1536),               -- 假设使用 1536 维度的 embedding
+    vector vector(384),               -- 使用 384 维度的 embedding
     model_name VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

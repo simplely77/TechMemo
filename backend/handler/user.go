@@ -33,7 +33,7 @@ func HandlerRegister(userService *service.UserService) gin.HandlerFunc {
 		// 判断用户是否已存在
 		resp, err := userService.Register(c.Request.Context(), req)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode)) // 返回具体的错误
+			response.FailErr(c, err)
 			return
 		}
 
@@ -67,7 +67,7 @@ func HandlerLogin(userService *service.UserService) gin.HandlerFunc {
 		// 调用 Service 层进行用户登录校验
 		resp, err := userService.Login(c.Request.Context(), req)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -94,11 +94,12 @@ func HandlerProfile(userService *service.UserService) gin.HandlerFunc {
 		userID, ok := userIDAny.(int64)
 		if !ok {
 			response.Fail(c, errors.InternalErr)
+			return
 		}
 
 		resp, err := userService.GetProfile(c.Request.Context(), userID)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 

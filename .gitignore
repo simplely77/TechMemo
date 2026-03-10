@@ -1,0 +1,7 @@
+/sql/data
+/sql/redis-data
+backend/config/config.yml
+.claude
+.idea
+.vscode
+.env

@@ -44,7 +44,7 @@ func HandlerGetNotes(noteService *service.NoteService) gin.HandlerFunc {
 		}
 		resp, err := noteService.GetNotes(c.Request.Context(), &req, userID)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -83,7 +83,7 @@ func HandlerCreateNote(noteService *service.NoteService) gin.HandlerFunc {
 
 		resp, err := noteService.CreateNoteWithTags(c.Request.Context(), &req, userID)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -109,7 +109,7 @@ func HandlerGetNote(noteService *service.NoteService) gin.HandlerFunc {
 
 		resp, err := noteService.GetNote(c.Request.Context(), id)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 		response.Success(c, resp)
@@ -140,7 +140,7 @@ func HandlerUpdateNote(noteService *service.NoteService) gin.HandlerFunc {
 
 		err = noteService.UpdateNote(c.Request.Context(), id, &req)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -183,7 +183,7 @@ func HandlerUpdateNoteTags(noteService *service.NoteService) gin.HandlerFunc {
 
 		err = noteService.UpdateNoteTags(c.Request.Context(), userID, id, &req)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -209,7 +209,7 @@ func HandlerDeleteNote(noteService *service.NoteService) gin.HandlerFunc {
 
 		err = noteService.DeleteNote(c.Request.Context(), id)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -241,7 +241,7 @@ func HandlerGetNoteVersions(noteService *service.NoteService) gin.HandlerFunc {
 
 		resp, err := noteService.GetNoteVersions(c.Request.Context(), id, sort)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -273,7 +273,7 @@ func HandlerRestoreNote(noteService *service.NoteService) gin.HandlerFunc {
 		}
 		err = noteService.RestoreNote(c.Request.Context(), id, versionID)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 

@@ -7,7 +7,7 @@ type ErrorCode struct {
 
 // Error implements [error].
 func (e ErrorCode) Error() string {
-	panic("unimplemented")
+	return e.Message
 }
 
 var (

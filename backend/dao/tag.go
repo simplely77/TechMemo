@@ -54,7 +54,7 @@ func (t *TagDao) UpdateTag(ctx context.Context, id int64, name string) error {
 		Where(t.q.Tag.ID.Eq(id)).
 		Update(t.q.Tag.Name, name)
 	if err != nil {
-		return nil
+		return err
 	}
 	if result.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
@@ -87,7 +87,7 @@ func (t *TagDao) CountTags(ctx context.Context, userID int64, keyword string) (i
 		WithContext(ctx).
 		Where(t.q.Tag.UserID.Eq(userID))
 
-	if keyword == "" {
+	if keyword != "" {
 		q = q.Where(t.q.Tag.Name.Like("%" + keyword + "%"))
 	}
 

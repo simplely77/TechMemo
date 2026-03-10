@@ -1,10 +1,14 @@
 package aiclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"techmemo/backend/config"
 
@@ -36,62 +40,71 @@ func (a *OpenAIClient) GetEmbeddingModelName() string {
 }
 
 type OpenAIClient struct {
-	chatClient      *openai.Client // 对话专用
-	embeddingClient *openai.Client // 向量专用
-	chatModel       string
-	embeddingModel  string
+	chatClient       *openai.Client // 对话专用
+	embeddingBaseURL string         // 本地向量服务地址
+	chatModel        string
+	embeddingModel   string
 }
 
 // NewOpenAIClientFromConfig 从拆分后的配置创建客户端
 func NewOpenAIClientFromConfig(cfg *config.Config) *OpenAIClient {
 	client := &OpenAIClient{
-		chatModel:      cfg.AI.Chat.Model,
-		embeddingModel: cfg.AI.Embedding.Model,
+		chatModel:        cfg.AI.Chat.Model,
+		embeddingModel:   cfg.AI.Embedding.Model,
+		embeddingBaseURL: cfg.AI.Embedding.BaseURL,
 	}
 
-	// 1. 初始化对话客户端
 	chatConfig := openai.DefaultConfig(cfg.AI.Chat.APIKey)
 	chatConfig.BaseURL = cfg.AI.Chat.BaseURL
 	client.chatClient = openai.NewClientWithConfig(chatConfig)
 
-	// 2. 初始化向量客户端
-	embedConfig := openai.DefaultConfig(cfg.AI.Embedding.APIKey)
-	embedConfig.BaseURL = cfg.AI.Embedding.BaseURL
-	client.embeddingClient = openai.NewClientWithConfig(embedConfig)
-
 	return client
+}
+
+// isRetryable 判断是否为可重试的错误（rate limit 或服务端 5xx）
+func isRetryable(err error) bool {
+	var apiErr *openai.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.HTTPStatusCode == 429 || apiErr.HTTPStatusCode >= 500
+	}
+	return false
 }
 
 // 通用文本处理
 func (c *OpenAIClient) ProcessText(ctx context.Context, prompt string, content string) (string, error) {
-	resp, err := c.chatClient.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: c.chatModel,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: prompt,
+	const maxRetries = 3
+	var lastErr error
+	for i := range maxRetries {
+		resp, err := c.chatClient.CreateChatCompletion(
+			ctx,
+			openai.ChatCompletionRequest{
+				Model: c.chatModel,
+				Messages: []openai.ChatCompletionMessage{
+					{Role: openai.ChatMessageRoleSystem, Content: prompt},
+					{Role: openai.ChatMessageRoleUser, Content: content},
 				},
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: content,
-				},
+				Temperature: 0.3,
+				MaxTokens:   2000,
 			},
-			Temperature: 0.3,
-			MaxTokens:   2000,
-		},
-	)
-
-	if err != nil {
-		return "", fmt.Errorf("AI处理失败: %w", err)
+		)
+		if err == nil {
+			if len(resp.Choices) == 0 {
+				return "", fmt.Errorf("AI返回空结果")
+			}
+			return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+		}
+		if !isRetryable(err) {
+			return "", fmt.Errorf("AI处理失败: %w", err)
+		}
+		lastErr = err
+		wait := time.Duration(1<<i) * time.Second // 1s, 2s, 4s
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(wait):
+		}
 	}
-
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("AI返回空结果")
-	}
-
-	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	return "", fmt.Errorf("AI处理失败（重试%d次）: %w", maxRetries, lastErr)
 }
 
 // ClassifyNoteType 智能判断笔记是否值得进行后续 AI 处理
@@ -153,23 +166,56 @@ func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content strin
 	return response.KnowledgePoints, nil
 }
 
-// 文本嵌入 - 支持"粗到细"的语义检索策略
+// 文本嵌入 - 调用本地 embedding-service
 func (c *OpenAIClient) GetEmbedding(ctx context.Context, content string) ([]float32, error) {
-	resp, err := c.embeddingClient.CreateEmbeddings(
-		ctx,
-		openai.EmbeddingRequest{
-			Model: openai.EmbeddingModel(c.embeddingModel),
-			Input: []string{content},
-		},
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("获取嵌入向量失败: %w", err)
+	type reqBody struct {
+		Texts []string `json:"texts"`
+	}
+	type respBody struct {
+		Vectors [][]float32 `json:"vectors"`
 	}
 
-	if len(resp.Data) == 0 {
-		return nil, fmt.Errorf("嵌入向量返回空结果")
-	}
+	const maxRetries = 3
+	var lastErr error
+	for i := range maxRetries {
+		body, _ := json.Marshal(reqBody{Texts: []string{content}})
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			c.embeddingBaseURL+"/embed", bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("构建向量请求失败: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	return resp.Data[0].Embedding, nil
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			lastErr = err
+		} else {
+			if resp.StatusCode >= 500 {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("向量服务返回 %d", resp.StatusCode)
+			} else if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				return nil, fmt.Errorf("向量服务返回 %d", resp.StatusCode)
+			} else {
+				var result respBody
+				if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+					resp.Body.Close()
+					return nil, fmt.Errorf("解析向量响应失败: %w", err)
+				}
+				resp.Body.Close()
+				if len(result.Vectors) == 0 {
+					return nil, fmt.Errorf("嵌入向量返回空结果")
+				}
+				return result.Vectors[0], nil
+			}
+		}
+
+		wait := time.Duration(1<<i) * time.Second
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return nil, fmt.Errorf("获取嵌入向量失败（重试%d次）: %w", maxRetries, lastErr)
 }

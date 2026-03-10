@@ -50,7 +50,7 @@ func HandlerGetTags(tagService *service.TagService) gin.HandlerFunc {
 		}
 		resp, err := tagService.GetTags(c.Request.Context(), userID, req.Keyword, req.Page, req.PageSize)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -83,11 +83,12 @@ func HandlerCreateTag(tagService *service.TagService) gin.HandlerFunc {
 		var req dto.CreateTagReq
 		if err := c.ShouldBindJSON(&req); err != nil {
 			response.Fail(c, errors.InvalidParam)
+			return
 		}
 
 		err := tagService.CreateTag(c.Request.Context(), userID, req.Name)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -133,7 +134,7 @@ func HandlerUpdateTag(tagService *service.TagService) gin.HandlerFunc {
 
 		err = tagService.UpdateTag(c.Request.Context(), userID, id, req.Name)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 		response.Success(c, nil)
@@ -159,7 +160,7 @@ func HandlerDeleteTag(tagService *service.TagService) gin.HandlerFunc {
 
 		err = tagService.DeleteTag(c.Request.Context(), id)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 		response.Success(c, nil)

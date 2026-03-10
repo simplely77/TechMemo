@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"techmemo/backend/common/errors"
 	"techmemo/backend/dao"
 	"techmemo/backend/handler/dto"
 )
@@ -30,7 +31,7 @@ func (s *KnowledgePointService) GetKnowledgePoints(ctx context.Context, req *dto
 
 	knowledgePoints, total, err := s.knowledgePointDao.GetKnowledgePoints(ctx, params)
 	if err != nil {
-		return nil, err
+		return nil, errors.InternalErr
 	}
 
 	items := make([]dto.KnowledgePointItem, 0, len(knowledgePoints))
@@ -65,11 +66,15 @@ func (s *KnowledgePointService) GetKnowledgePoints(ctx context.Context, req *dto
 func (s *KnowledgePointService) GetKnowledgePoint(ctx context.Context, id int64, userID int64) (*dto.GetKnowledgePointResp, error) {
 	kp, err := s.knowledgePointDao.GetKnowledgePointByID(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, errors.InternalErr
+	}
+
+	if kp == nil {
+		return nil, errors.NotFound
 	}
 
 	if kp.UserID != userID {
-		return nil, nil
+		return nil, errors.Forbidden
 	}
 
 	resp := &dto.GetKnowledgePointResp{
@@ -121,11 +126,15 @@ func (s *KnowledgePointService) GetKnowledgePoint(ctx context.Context, id int64,
 func (s *KnowledgePointService) UpdateKnowledgePoint(ctx context.Context, id int64, req *dto.UpdateKnowledgePointReq, userID int64) error {
 	kp, err := s.knowledgePointDao.GetKnowledgePointByID(ctx, id)
 	if err != nil {
-		return err
+		return errors.InternalErr
+	}
+
+	if kp == nil {
+		return errors.NotFound
 	}
 
 	if kp.UserID != userID {
-		return nil
+		return errors.Forbidden
 	}
 
 	params := dao.UpdateKnowledgePointParams{
@@ -140,11 +149,15 @@ func (s *KnowledgePointService) UpdateKnowledgePoint(ctx context.Context, id int
 func (s *KnowledgePointService) DeleteKnowledgePoint(ctx context.Context, id int64, userID int64) error {
 	kp, err := s.knowledgePointDao.GetKnowledgePointByID(ctx, id)
 	if err != nil {
-		return err
+		return errors.InternalErr
+	}
+
+	if kp == nil {
+		return errors.NotFound
 	}
 
 	if kp.UserID != userID {
-		return nil
+		return errors.Forbidden
 	}
 
 	return s.knowledgePointDao.DeleteKnowledgePoint(ctx, id)

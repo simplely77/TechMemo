@@ -13,14 +13,6 @@ type App struct {
 	NoteService           *service.NoteService
 	AIService             *service.AIService
 	KnowledgePointService *service.KnowledgePointService
-
-	// DAO层直接暴露给worker等需要直接访问数据库的组件
-	UserDao           *dao.UserDao
-	CategoryDao       *dao.CategoryDao
-	TagDao            *dao.TagDao
-	NoteDao           *dao.NoteDao
-	AIDao             *dao.AIDao
-	KnowledgePointDao *dao.KnowledgePointDao
 }
 
 func InitApp() *App {
@@ -33,7 +25,7 @@ func InitApp() *App {
 	noteDao := dao.NewNoteDao(database.Q)
 	noteService := service.NewNoteService(noteDao, categoryDao, tagDao, database.Q)
 	aiDao := dao.NewAIDao(database.Q, database.DB)
-	aiService := service.NewAIService(aiDao)
+	aiService := service.NewAIService(aiDao, noteDao)
 	knowledgePointDao := dao.NewKnowledgePointDao(database.Q)
 	knowledgePointService := service.NewKnowledgePointService(knowledgePointDao, noteDao)
 
@@ -44,12 +36,5 @@ func InitApp() *App {
 		NoteService:           noteService,
 		AIService:             aiService,
 		KnowledgePointService: knowledgePointService,
-
-		UserDao:           userDao,
-		CategoryDao:       categoryDao,
-		TagDao:            tagDao,
-		NoteDao:           noteDao,
-		AIDao:             aiDao,
-		KnowledgePointDao: knowledgePointDao,
 	}
 }

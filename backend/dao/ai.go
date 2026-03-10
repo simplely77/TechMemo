@@ -5,6 +5,7 @@ import (
 	"techmemo/backend/model"
 	"techmemo/backend/query"
 
+	pgvector "github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
 )
 
@@ -18,14 +19,13 @@ func (d *AIDao) GetKnowledgePointByID(ctx context.Context, id int64) (*model.Kno
 }
 
 func (d *AIDao) SaveEmbedding(ctx context.Context, embeddingModel *model.EmbeddingCustom) error {
-	// 将自定义类型转换为数据库模型
-	dbEmbedding, err := embeddingModel.ToDBFormat()
-	if err != nil {
-		return err
-	}
-
-	// 使用生成的模型保存到数据库
-	return d.q.Embedding.WithContext(ctx).Create(dbEmbedding)
+	return d.db.WithContext(ctx).Exec(
+		`INSERT INTO embedding (target_type, target_id, vector, model_name) VALUES (?, ?, ?, ?)`,
+		embeddingModel.TargetType,
+		embeddingModel.TargetID,
+		pgvector.NewVector(embeddingModel.Vector),
+		embeddingModel.ModelName,
+	).Error
 }
 
 func (d *AIDao) SaveKnowledgePoints(ctx context.Context, knowledgePoints []*model.KnowledgePoint) error {

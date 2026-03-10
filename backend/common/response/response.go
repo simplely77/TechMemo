@@ -27,3 +27,12 @@ func Fail(c *gin.Context, err errors.ErrorCode) {
 		Message: err.Message,
 	})
 }
+
+// FailErr 将 error 安全转换为 ErrorCode 后返回，若转换失败则返回 InternalErr。
+func FailErr(c *gin.Context, err error) {
+	if ec, ok := err.(errors.ErrorCode); ok {
+		Fail(c, ec)
+	} else {
+		Fail(c, errors.InternalErr)
+	}
+}

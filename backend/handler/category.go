@@ -33,7 +33,7 @@ func HandlerGetCategorys(categoryService *service.CategoryService) gin.HandlerFu
 
 		resp, err := categoryService.GetCategorys(c.Request.Context(), userID)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -77,7 +77,7 @@ func HandlerCreateCategory(categoryService *service.CategoryService) gin.Handler
 
 		resp, err := categoryService.CreateCategory(c.Request.Context(), userID, req.Name)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 
@@ -123,7 +123,7 @@ func HandlerUpdateCategory(categoryService *service.CategoryService) gin.Handler
 
 		err = categoryService.UpdateCategory(c.Request.Context(), userID, id, req.Name)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 		response.Success(c, nil)
@@ -148,7 +148,7 @@ func HandlerDeleteCategory(categoryService *service.CategoryService) gin.Handler
 
 		err = categoryService.DeleteCategory(c.Request.Context(), id)
 		if err != nil {
-			response.Fail(c, err.(errors.ErrorCode))
+			response.FailErr(c, err)
 			return
 		}
 		response.Success(c, nil)
