@@ -32,6 +32,38 @@ func (d *AIDao) SaveKnowledgePoints(ctx context.Context, knowledgePoints []*mode
 	return d.q.KnowledgePoint.WithContext(ctx).Create(knowledgePoints...)
 }
 
+func (d *AIDao) GetKnowledgePointsByNoteID(ctx context.Context, noteID int64) ([]*model.KnowledgePoint, error) {
+	return d.q.KnowledgePoint.WithContext(ctx).
+		Where(d.q.KnowledgePoint.SourceNoteID.Eq(noteID)).
+		Find()
+}
+
+func (d *AIDao) SaveKnowledgeRelations(ctx context.Context, relations []*model.KnowledgeRelation) error {
+	if len(relations) == 0 {
+		return nil
+	}
+	return d.q.KnowledgeRelation.WithContext(ctx).Create(relations...)
+}
+
+func (d *AIDao) GetKnowledgeRelationsByNoteID(ctx context.Context, noteID int64) ([]*model.KnowledgeRelation, error) {
+	kps, err := d.q.KnowledgePoint.WithContext(ctx).
+		Where(d.q.KnowledgePoint.SourceNoteID.Eq(noteID)).
+		Select(d.q.KnowledgePoint.ID).
+		Find()
+	if err != nil || len(kps) == 0 {
+		return nil, err
+	}
+
+	ids := make([]int64, len(kps))
+	for i, kp := range kps {
+		ids[i] = kp.ID
+	}
+
+	return d.q.KnowledgeRelation.WithContext(ctx).
+		Where(d.q.KnowledgeRelation.FromKnowledgeID.In(ids...)).
+		Find()
+}
+
 func (d *AIDao) UpdateStatus(ctx context.Context, id int64, status string) {
 	d.q.AiProcessLog.
 		WithContext(ctx).

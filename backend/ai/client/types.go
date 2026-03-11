@@ -2,9 +2,10 @@ package aiclient
 
 // KnowledgePoint 表示从笔记中抽取的核心知识单元
 type KnowledgePoint struct {
-	Name            string  `json:"name"`            // 知识点名称
-	Description     string  `json:"description"`     // 知识点说明
-	ImportanceScore float64 `json:"importanceScore"` // 重要性评分
+	Name            string           `json:"name"`            // 知识点名称
+	Description     string           `json:"description"`     // 知识点说明
+	ImportanceScore float64          `json:"importanceScore"` // 重要性评分
+	Children        []KnowledgePoint `json:"children"`        //子节点
 }
 
 // ExtractResult 知识抽取结果

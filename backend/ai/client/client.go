@@ -142,11 +142,41 @@ func (c *OpenAIClient) ClassifyNoteType(ctx context.Context, content string) (st
 
 // 知识抽取 - 专注于README中描述的知识点抽取功能
 func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content string) ([]KnowledgePoint, error) {
-	prompt := `请从以下技术笔记中抽取核心知识点，要求：
-1. 识别3-8个核心知识点
-2. 每个知识点包含：名称、简要说明、重要性评分(1-10分)
-3. 返回JSON格式：{"knowledgePoints": [{"name": "", "description": "", "importanceScore": 0}]}
-4. 只返回JSON，不要其他内容`
+	prompt := `
+请从以下技术笔记中抽取知识结构。
+
+要求：
+1. 识别技术概念、机制、算法或工具
+2. 构建层级结构（最多5层）
+3. 每个节点包含：
+   - name
+   - description
+   - importanceScore
+   - children
+
+返回JSON：
+
+{
+  "knowledgeTree": {
+    "name": "",
+    "description": "",
+    "importanceScore": 0,
+    "children": [
+      {
+        "name": "",
+        "description": "",
+        "importanceScore": 0,
+        "children": []
+      }
+    ]
+  }
+}
+
+注意：
+- 层级不超过5层
+- 节点总数不超过25
+- 不要生成解释
+- 只返回JSON`
 
 	result, err := c.ProcessText(ctx, prompt, content)
 	if err != nil {

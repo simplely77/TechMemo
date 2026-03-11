@@ -95,8 +95,8 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 			// 思维导图
 			mindmap := authorized.Group("/mindmap")
 			{
-				mindmap.POST("/generate", nil) // 生成思维导图
-				mindmap.GET("/global", nil)    // 获取全局知识图谱
+				mindmap.GET("", handler.HandlerGetMindMap(app.AIService)) // 获取思维导图
+				mindmap.GET("/global", nil)                               // 获取全局知识图谱
 			}
 
 			// 搜索与问答

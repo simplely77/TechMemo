@@ -1,6 +1,6 @@
 import os
-from flask import Flask,request,jsonify
-from sentence_transformers import SentenceTransformer
+from flask import Flask,request,jsonify # pyright: ignore[reportMissingImports]
+from sentence_transformers import SentenceTransformer # pyright: ignore[reportMissingImports]
 
 model_name = os.getenv("MODEL_NAME", "all-MiniLM-L6-v2")
 model = SentenceTransformer(model_name)

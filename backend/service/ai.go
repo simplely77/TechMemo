@@ -200,24 +200,55 @@ func (a *AIService) handleExtract(ctx context.Context, logItem *model.AiProcessL
 		return
 	}
 
-	kpModels := make([]*model.KnowledgePoint, 0, len(knowledgePoints))
-	for _, kp := range knowledgePoints {
-		kpModels = append(kpModels, &model.KnowledgePoint{
-			UserID:          note.UserID,
-			Name:            kp.Name,
-			Description:     kp.Description,
-			ImportanceScore: kp.ImportanceScore,
-			SourceNoteID:    logItem.TargetID,
-		})
+	// 递归展开树形结构，收集所有节点和父子关系（ID 保存后回填）
+	type nodeEntry struct {
+		model  *model.KnowledgePoint
+		parent *model.KnowledgePoint
+	}
+	var entries []nodeEntry
+	var collect func(nodes []aiclient.KnowledgePoint, parent *model.KnowledgePoint)
+	collect = func(nodes []aiclient.KnowledgePoint, parent *model.KnowledgePoint) {
+		for _, kp := range nodes {
+			m := &model.KnowledgePoint{
+				UserID:          note.UserID,
+				Name:            kp.Name,
+				Description:     kp.Description,
+				ImportanceScore: kp.ImportanceScore,
+				SourceNoteID:    logItem.TargetID,
+			}
+			entries = append(entries, nodeEntry{model: m, parent: parent})
+			collect(kp.Children, m)
+		}
+	}
+	collect(knowledgePoints, nil)
+
+	allModels := make([]*model.KnowledgePoint, len(entries))
+	for i, e := range entries {
+		allModels[i] = e.model
 	}
 
-	if err := a.aiDao.SaveKnowledgePoints(ctx, kpModels); err != nil {
+	if err := a.aiDao.SaveKnowledgePoints(ctx, allModels); err != nil {
 		a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
 		log.Printf("保存知识点失败: %v", err)
 		return
 	}
 
-	for _, kp := range kpModels {
+	// 知识点落库后 ID 已填充，构建父子关系
+	var relations []*model.KnowledgeRelation
+	for _, e := range entries {
+		if e.parent != nil && e.parent.ID > 0 && e.model.ID > 0 {
+			relations = append(relations, &model.KnowledgeRelation{
+				FromKnowledgeID: e.parent.ID,
+				ToKnowledgeID:   e.model.ID,
+				RelationType:    "related",
+			})
+		}
+	}
+	if err := a.aiDao.SaveKnowledgeRelations(ctx, relations); err != nil {
+		log.Printf("保存知识点关系失败（不影响主流程）: %v", err)
+	}
+
+	for _, kp := range allModels {
 		_ = a.aiDao.CreateAILog(ctx, dao.CreateAILogParams{
 			SourceNoteID: logItem.SourceNoteID,
 			TaskID:       logItem.TaskID,
@@ -231,7 +262,7 @@ func (a *AIService) handleExtract(ctx context.Context, logItem *model.AiProcessL
 	}
 
 	a.aiDao.UpdateStatus(ctx, logItem.ID, "completed")
-	log.Printf("知识抽取完成，笔记ID: %d, 抽取知识点数: %d", logItem.TargetID, len(knowledgePoints))
+	log.Printf("知识抽取完成，笔记ID: %d, 节点数: %d, 关系数: %d", logItem.TargetID, len(allModels), len(relations))
 }
 
 func (a *AIService) handleEmbedding(ctx context.Context, logItem *model.AiProcessLog) {
@@ -278,6 +309,58 @@ func (a *AIService) handleEmbedding(ctx context.Context, logItem *model.AiProces
 	}
 
 	a.aiDao.UpdateStatus(ctx, logItem.ID, "completed")
+}
+
+// GetMindMap 从 DB 读取知识点和关系，重建树形结构
+func (a *AIService) GetMindMap(ctx context.Context, noteID int64) (dto.GetMindMapResp, error) {
+	// 1. 获取该笔记下所有知识点
+	kps, err := a.aiDao.GetKnowledgePointsByNoteID(ctx, noteID)
+	if err != nil {
+		return dto.GetMindMapResp{}, errors.InternalErr
+	}
+
+	// 2. 获取关系
+	relations, err := a.aiDao.GetKnowledgeRelationsByNoteID(ctx, noteID)
+	if err != nil {
+		return dto.GetMindMapResp{}, errors.InternalErr
+	}
+
+	// 3. 构建 id -> node 映射
+	nodeMap := make(map[int64]*dto.MindMapNode, len(kps))
+	for _, kp := range kps {
+		n := &dto.MindMapNode{
+			ID:              kp.ID,
+			Name:            kp.Name,
+			Description:     kp.Description,
+			ImportanceScore: kp.ImportanceScore,
+		}
+		nodeMap[kp.ID] = n
+	}
+
+	// 4. 根据 related 关系挂载子节点，同时记录哪些是子节点
+	childIDs := make(map[int64]bool)
+	for _, r := range relations {
+		if r.RelationType != "related" {
+			continue
+		}
+		parent, ok := nodeMap[r.FromKnowledgeID]
+		child, ok2 := nodeMap[r.ToKnowledgeID]
+		if !ok || !ok2 {
+			continue
+		}
+		parent.Children = append(parent.Children, *child)
+		childIDs[r.ToKnowledgeID] = true
+	}
+
+	// 5. 顶层节点 = 不是任何人的子节点
+	var roots []dto.MindMapNode
+	for _, kp := range kps {
+		if !childIDs[kp.ID] {
+			roots = append(roots, *nodeMap[kp.ID])
+		}
+	}
+
+	return dto.GetMindMapResp{NoteID: noteID, Nodes: roots}, nil
 }
 
 func generateTaskID(id int64) string {

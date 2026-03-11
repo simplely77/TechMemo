@@ -47,3 +47,23 @@ type UpdateKnowledgePointReq struct {
 	Description     string  `json:"description"`
 	ImportanceScore float64 `json:"importance_score" binding:"min=1,max=10"`
 }
+
+// GetMindMapReq 获取思维导图请求
+type GetMindMapReq struct {
+	NoteID int64 `form:"note_id" binding:"required"`
+}
+
+// MindMapNode 思维导图节点
+type MindMapNode struct {
+	ID              int64         `json:"id"`
+	Name            string        `json:"name"`
+	Description     string        `json:"description"`
+	ImportanceScore float64       `json:"importance_score"`
+	Children        []MindMapNode `json:"children,omitempty"`
+}
+
+// GetMindMapResp 思维导图响应
+type GetMindMapResp struct {
+	NoteID int64         `json:"note_id"`
+	Nodes  []MindMapNode `json:"nodes"`
+}
