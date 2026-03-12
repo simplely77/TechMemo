@@ -25,6 +25,8 @@ type AIClient interface {
 	GetEmbedding(ctx context.Context, content string) ([]float32, error)
 	// 通用文本处理
 	ProcessText(ctx context.Context, prompt string, content string) (string, error)
+	// 全局思维导图 - 分析多个顶节点之间的关联关系
+	BuildGlobalMindMap(ctx context.Context, nodes []GlobalNode) ([]GlobalRelation, error)
 	// 获取当前使用的模型名称
 	GetChatModelName() string
 	// 获取当前使用的向量模型名称
@@ -157,15 +159,15 @@ func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content strin
 返回JSON：
 
 {
-  "knowledgeTree": {
+  "knowledgePoints": {
     "name": "",
     "description": "",
-    "importanceScore": 0,
+    "importanceScore": 0.5,
     "children": [
       {
         "name": "",
         "description": "",
-        "importanceScore": 0,
+        "importanceScore": 0.9,
         "children": []
       }
     ]
@@ -176,16 +178,18 @@ func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content strin
 - 层级不超过5层
 - 节点总数不超过25
 - 不要生成解释
-- 只返回JSON`
+- 只返回纯JSON,不要Markdown代码块。`
 
 	result, err := c.ProcessText(ctx, prompt, content)
 	if err != nil {
 		return nil, err
 	}
 
+	result = cleanJSONResponse(result)
+
 	// 解析JSON结果
 	var response struct {
-		KnowledgePoints []KnowledgePoint `json:"knowledgePoints"`
+		KnowledgePoints KnowledgePoint `json:"knowledgePoints"`
 	}
 
 	err = json.Unmarshal([]byte(result), &response)
@@ -193,7 +197,7 @@ func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content strin
 		return nil, err
 	}
 
-	return response.KnowledgePoints, nil
+	return []KnowledgePoint{response.KnowledgePoints}, nil
 }
 
 // 文本嵌入 - 调用本地 embedding-service
@@ -248,4 +252,62 @@ func (c *OpenAIClient) GetEmbedding(ctx context.Context, content string) ([]floa
 		}
 	}
 	return nil, fmt.Errorf("获取嵌入向量失败（重试%d次）: %w", maxRetries, lastErr)
+}
+
+func cleanJSONResponse(result string) string {
+	result = strings.TrimSpace(result)
+
+	start := strings.Index(result, "{")
+	end := strings.LastIndex(result, "}")
+
+	if start != -1 && end != -1 {
+		result = result[start : end+1]
+	}
+
+	return result
+}
+
+// BuildGlobalMindMap 分析多个顶节点之间的关联关系，生成全局思维导图连接
+func (c *OpenAIClient) BuildGlobalMindMap(ctx context.Context, nodes []GlobalNode) ([]GlobalRelation, error) {
+	if len(nodes) < 2 {
+		return nil, nil
+	}
+
+	// 将顶节点列表序列化为 JSON 作为输入
+	nodeListJSON, err := json.Marshal(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("序列化节点列表失败: %w", err)
+	}
+
+	prompt := `你是一个知识图谱分析助手。给定以下知识主题列表（每个主题来自不同笔记的核心概念），请分析它们之间存在的有意义的关联关系。
+
+要求：
+1. 只建立真实存在的知识关联，不要强行连接
+2. 关系类型举例：包含、依赖、对比、扩展、应用
+3. 每对节点最多建立一条关系
+4. 如果两个节点没有明显关联，不要建立关系
+
+返回 JSON 格式（只返回 JSON，不要其他内容）：
+{
+  "relations": [
+    {"from_id": 1, "to_id": 2, "label": "关系描述"},
+    ...
+  ]
+}`
+
+	result, err := c.ProcessText(ctx, prompt, string(nodeListJSON))
+	if err != nil {
+		return nil, fmt.Errorf("全局思维导图生成失败: %w", err)
+	}
+
+	result = cleanJSONResponse(result)
+
+	var response struct {
+		Relations []GlobalRelation `json:"relations"`
+	}
+	if err := json.Unmarshal([]byte(result), &response); err != nil {
+		return nil, fmt.Errorf("解析全局关系失败: %w", err)
+	}
+
+	return response.Relations, nil
 }

@@ -62,6 +62,34 @@ func (a *AIService) GetNoteAIStatus(ctx context.Context, noteID int64) (dto.GetN
 	}, nil
 }
 
+// GetTaskStatus 按 taskID 查询任务状态，适用于全局思维导图等非笔记任务。
+func (a *AIService) GetTaskStatus(ctx context.Context, taskID string) (dto.GetTaskStatusResp, error) {
+	logs, err := a.aiDao.GetLogsByTaskID(ctx, taskID)
+	if err != nil {
+		return dto.GetTaskStatusResp{}, errors.InternalErr
+	}
+	if len(logs) == 0 {
+		return dto.GetTaskStatusResp{TaskID: taskID, Status: "not_started"}, nil
+	}
+
+	status := "completed"
+	for _, logItem := range logs {
+		switch logItem.Status {
+		case "failed":
+			status = "failed"
+		case "processing":
+			if status != "failed" {
+				status = "processing"
+			}
+		case "pending":
+			if status != "failed" && status != "processing" {
+				status = "pending"
+			}
+		}
+	}
+	return dto.GetTaskStatusResp{TaskID: taskID, Status: status}, nil
+}
+
 func (a *AIService) GetQueue() queue.Queue {
 	return a.queue
 }
@@ -96,6 +124,33 @@ func (a *AIService) SubmitTask(ctx context.Context, noteID int64) (string, error
 	return taskID, nil
 }
 
+// SubmitGlobalMindMapTask 提交全局思维导图生成任务，由 API 层调用。
+func (a *AIService) SubmitGlobalMindMapTask(ctx context.Context, userID int64) (string, error) {
+	taskID := generateGlobalTaskID(userID)
+
+	// 清除旧的 global 关系缓存，确保本次重新生成
+	if err := a.aiDao.DeleteGlobalRelationsByUserID(ctx, userID); err != nil {
+		return "", errors.InternalErr
+	}
+
+	if err := a.aiDao.CreateAILog(ctx, dao.CreateAILogParams{
+		SourceNoteID: 0,
+		TaskID:       taskID,
+		TargetType:   "user",
+		TargetID:     userID,
+		ProcessType:  "global_mindmap",
+		ModelName:    config.AppConfig.AI.Chat.Model,
+		Status:       "pending",
+	}); err != nil {
+		return "", errors.InternalErr
+	}
+
+	if err := a.queue.Publish(queue.AITask{TaskID: taskID}); err != nil {
+		return "", errors.InternalErr
+	}
+	return taskID, nil
+}
+
 // ProcessTask 处理一个 AI 任务，由 Worker 调用。
 func (a *AIService) ProcessTask(ctx context.Context, task queue.AITask) {
 	logs, err := a.aiDao.GetLogsByTaskID(ctx, task.TaskID)
@@ -118,6 +173,8 @@ func (a *AIService) ProcessTask(ctx context.Context, task queue.AITask) {
 			a.handleExtract(ctx, logItem)
 		case "embedding":
 			a.handleEmbedding(ctx, logItem)
+		case "global_mindmap":
+			a.handleGlobalMindMap(ctx, logItem)
 		default:
 			a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
 		}
@@ -248,6 +305,19 @@ func (a *AIService) handleExtract(ctx context.Context, logItem *model.AiProcessL
 		log.Printf("保存知识点关系失败（不影响主流程）: %v", err)
 	}
 
+	// 保存顶节点（parent == nil 的节点）到 note_root_node 表
+	for _, e := range entries {
+		if e.parent == nil && e.model.ID > 0 {
+			_ = a.aiDao.SaveNoteRootNode(ctx, &model.NoteRootNode{
+				NoteID:          logItem.TargetID,
+				RootKnowledgeID: e.model.ID,
+				Name:            e.model.Name,
+				Description:     e.model.Description,
+				ImportanceScore: e.model.ImportanceScore,
+			})
+		}
+	}
+
 	for _, kp := range allModels {
 		_ = a.aiDao.CreateAILog(ctx, dao.CreateAILogParams{
 			SourceNoteID: logItem.SourceNoteID,
@@ -333,6 +403,7 @@ func (a *AIService) GetMindMap(ctx context.Context, noteID int64) (dto.GetMindMa
 			Name:            kp.Name,
 			Description:     kp.Description,
 			ImportanceScore: kp.ImportanceScore,
+			Children:        []*dto.MindMapNode{},
 		}
 		nodeMap[kp.ID] = n
 	}
@@ -348,23 +419,111 @@ func (a *AIService) GetMindMap(ctx context.Context, noteID int64) (dto.GetMindMa
 		if !ok || !ok2 {
 			continue
 		}
-		parent.Children = append(parent.Children, *child)
+		parent.Children = append(parent.Children, child)
 		childIDs[r.ToKnowledgeID] = true
 	}
 
 	// 5. 顶层节点 = 不是任何人的子节点
-	var roots []dto.MindMapNode
+	var roots []*dto.MindMapNode
 	for _, kp := range kps {
 		if !childIDs[kp.ID] {
-			roots = append(roots, *nodeMap[kp.ID])
+			roots = append(roots, nodeMap[kp.ID])
 		}
 	}
 
 	return dto.GetMindMapResp{NoteID: noteID, Nodes: roots}, nil
 }
 
+// GetGlobalMindMap 纯读库：返回已生成的全局思维导图（顶节点 + global 关系）。
+// 若尚未生成，请先调用 POST /ai/mindmap/global 触发生成任务。
+func (a *AIService) GetGlobalMindMap(ctx context.Context, userID int64) (dto.GetGlobalMindMapResp, error) {
+	rootNodes, err := a.aiDao.GetRootNodesByUserID(ctx, userID)
+	if err != nil {
+		return dto.GetGlobalMindMapResp{}, errors.InternalErr
+	}
+
+	nodes := make([]dto.GlobalMindMapNode, len(rootNodes))
+	for i, n := range rootNodes {
+		nodes[i] = dto.GlobalMindMapNode{
+			ID:              n.RootKnowledgeID,
+			NoteID:          n.NoteID,
+			Name:            n.Name,
+			Description:     n.Description,
+			ImportanceScore: n.ImportanceScore,
+		}
+	}
+
+	cachedRelations, err := a.aiDao.GetGlobalRelationsByUserID(ctx, userID)
+	if err != nil {
+		return dto.GetGlobalMindMapResp{}, errors.InternalErr
+	}
+
+	edges := make([]dto.GlobalMindMapEdge, len(cachedRelations))
+	for i, r := range cachedRelations {
+		label := r.RelationType
+		if len(label) > 7 && label[:7] == "global:" {
+			label = label[7:]
+		}
+		edges[i] = dto.GlobalMindMapEdge{
+			FromID: r.FromKnowledgeID,
+			ToID:   r.ToKnowledgeID,
+			Label:  label,
+		}
+	}
+
+	return dto.GetGlobalMindMapResp{Nodes: nodes, Edges: edges}, nil
+}
+
+// handleGlobalMindMap 由 Worker 调用，执行全局思维导图的 AI 生成并写库。
+func (a *AIService) handleGlobalMindMap(ctx context.Context, logItem *model.AiProcessLog) {
+	userID := logItem.TargetID
+	rootNodes, err := a.aiDao.GetRootNodesByUserID(ctx, userID)
+	if err != nil || len(rootNodes) < 2 {
+		log.Printf("全局思维导图：用户 %d 顶节点不足，跳过生成", userID)
+		a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
+		return
+	}
+
+	aiNodes := make([]aiclient.GlobalNode, len(rootNodes))
+	for i, n := range rootNodes {
+		aiNodes[i] = aiclient.GlobalNode{
+			ID:          n.RootKnowledgeID,
+			Name:        n.Name,
+			Description: n.Description,
+		}
+	}
+
+	aiRelations, err := a.aiClient.BuildGlobalMindMap(ctx, aiNodes)
+	if err != nil {
+		log.Printf("全局思维导图 AI 生成失败: %v", err)
+		a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
+		return
+	}
+
+	var relations []*model.KnowledgeRelation
+	for _, r := range aiRelations {
+		relations = append(relations, &model.KnowledgeRelation{
+			FromKnowledgeID: r.FromID,
+			ToKnowledgeID:   r.ToID,
+			RelationType:    "global:" + r.Label,
+		})
+	}
+	if err := a.aiDao.SaveKnowledgeRelations(ctx, relations); err != nil {
+		log.Printf("保存全局关系失败: %v", err)
+		a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
+		return
+	}
+
+	a.aiDao.UpdateStatus(ctx, logItem.ID, "completed")
+	log.Printf("全局思维导图生成完成，用户 %d，关系数: %d", userID, len(relations))
+}
+
 func generateTaskID(id int64) string {
 	return fmt.Sprintf("ai:%d:%s", id, uuid.NewString())
+}
+
+func generateGlobalTaskID(userID int64) string {
+	return fmt.Sprintf("global:%d:%s", userID, uuid.NewString())
 }
 
 func NewAIService(aiDao *dao.AIDao, noteDao *dao.NoteDao) *AIService {

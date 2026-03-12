@@ -90,26 +90,21 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 			{
 				ai.POST("/note/:id", handler.HandlerProcessNoteAI(app.NoteService, app.AIService)) // 触发笔记 AI 处理
 				ai.GET("/note/:id/status", handler.HandlerGetNoteAIStatus(app.AIService))          // 获取 AI 处理日志
+				ai.POST("/mindmap/global", handler.HandlerGenerateGlobalMindMap(app.AIService))    // 触发全局思维导图生成
+				ai.GET("/task/:task_id/status", handler.HandlerGetTaskStatus(app.AIService))       // 查询任务状态
 			}
 
 			// 思维导图
 			mindmap := authorized.Group("/mindmap")
 			{
-				mindmap.GET("", handler.HandlerGetMindMap(app.AIService)) // 获取思维导图
-				mindmap.GET("/global", nil)                               // 获取全局知识图谱
+				mindmap.GET("", handler.HandlerGetMindMap(app.AIService))              // 获取思维导图
+				mindmap.GET("/global", handler.HandlerGetGlobalMindMap(app.AIService)) // 获取全局知识图谱
 			}
 
 			// 搜索与问答
 			authorized.POST("/search/semantic", nil) // 语义搜索
 			authorized.GET("/search/keyword", nil)   // 关键词搜索
 			authorized.POST("/qa/ask", nil)          // 智能问答
-
-			// 复习推荐
-			review := authorized.Group("/review")
-			{
-				review.GET("/recommendations", nil) // 获取复习推荐
-				review.POST("/record", nil)         // 记录复习结果
-			}
 
 			// 统计分析
 			stats := authorized.Group("/stats")

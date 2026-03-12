@@ -17,7 +17,7 @@ type Embedding struct {
 	TargetID   int64     `gorm:"column:target_id;not null" json:"target_id"`
 	Vector     string    `gorm:"column:vector" json:"vector"`
 	ModelName  string    `gorm:"column:model_name;not null" json:"model_name"`
-	CreatedAt  time.Time `gorm:"column:created_at" json:"created_at"`
+	CreatedAt  time.Time `gorm:"column:created_at;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 // TableName Embedding's table name

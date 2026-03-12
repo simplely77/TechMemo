@@ -19,8 +19,8 @@ type Note struct {
 	NoteType   string    `gorm:"column:note_type;default:unknown" json:"note_type"`
 	CategoryID int64     `gorm:"column:category_id" json:"category_id"`
 	Status     string    `gorm:"column:status;default:normal" json:"status"`
-	CreatedAt  time.Time `gorm:"column:created_at" json:"created_at"`
-	UpdatedAt  time.Time `gorm:"column:updated_at" json:"updated_at"`
+	CreatedAt  time.Time `gorm:"column:created_at;default:CURRENT_TIMESTAMP" json:"created_at"`
+	UpdatedAt  time.Time `gorm:"column:updated_at;default:CURRENT_TIMESTAMP" json:"updated_at"`
 }
 
 // TableName Note's table name

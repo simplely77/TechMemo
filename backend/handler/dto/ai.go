@@ -10,3 +10,8 @@ type GetNoteAIStatusResp struct {
 	Status   string            `json:"status"`
 	Progress map[string]string `json:"progress,omitempty"`
 }
+
+type GetTaskStatusResp struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"status"`
+}

@@ -26,14 +26,14 @@ type KnowledgePointItem struct {
 }
 
 type GetKnowledgePointResp struct {
-	ID               int64             `json:"id"`
-	Name             string            `json:"name"`
-	Description      string            `json:"description"`
-	SourceNoteID     int64             `json:"source_note_id"`
-	SourceNoteTitle  string            `json:"source_note_title,omitempty"`
-	ImportanceScore  float64           `json:"importance_score"`
+	ID               int64              `json:"id"`
+	Name             string             `json:"name"`
+	Description      string             `json:"description"`
+	SourceNoteID     int64              `json:"source_note_id"`
+	SourceNoteTitle  string             `json:"source_note_title,omitempty"`
+	ImportanceScore  float64            `json:"importance_score"`
 	RelatedKnowledge []RelatedKnowledge `json:"related_knowledge,omitempty"`
-	CreatedAt        string            `json:"created_at"`
+	CreatedAt        string             `json:"created_at"`
 }
 
 type RelatedKnowledge struct {
@@ -55,15 +55,37 @@ type GetMindMapReq struct {
 
 // MindMapNode 思维导图节点
 type MindMapNode struct {
-	ID              int64         `json:"id"`
-	Name            string        `json:"name"`
-	Description     string        `json:"description"`
-	ImportanceScore float64       `json:"importance_score"`
-	Children        []MindMapNode `json:"children,omitempty"`
+	ID              int64          `json:"id"`
+	Name            string         `json:"name"`
+	Description     string         `json:"description"`
+	ImportanceScore float64        `json:"importance_score"`
+	Children        []*MindMapNode `json:"children"`
 }
 
 // GetMindMapResp 思维导图响应
 type GetMindMapResp struct {
-	NoteID int64         `json:"note_id"`
-	Nodes  []MindMapNode `json:"nodes"`
+	NoteID int64          `json:"note_id"`
+	Nodes  []*MindMapNode `json:"nodes"`
+}
+
+// GlobalMindMapNode 全局思维导图节点（来自顶节点表）
+type GlobalMindMapNode struct {
+	ID              int64  `json:"id"`               // knowledge_point.id
+	NoteID          int64  `json:"note_id"`           // 来源笔记
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	ImportanceScore float64 `json:"importance_score"`
+}
+
+// GlobalMindMapEdge 全局思维导图边
+type GlobalMindMapEdge struct {
+	FromID int64  `json:"from_id"`
+	ToID   int64  `json:"to_id"`
+	Label  string `json:"label"`
+}
+
+// GetGlobalMindMapResp 全局思维导图响应
+type GetGlobalMindMapResp struct {
+	Nodes []GlobalMindMapNode `json:"nodes"`
+	Edges []GlobalMindMapEdge `json:"edges"`
 }

@@ -20,3 +20,17 @@ type EmbeddingResult struct {
 	TargetID   int64     `json:"targetId"`   // 对应对象ID
 	Vector     []float32 `json:"vector"`     // 向量数据
 }
+
+// GlobalNode 用于全局思维导图的顶节点输入
+type GlobalNode struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// GlobalRelation 全局思维导图中顶节点之间的关联关系
+type GlobalRelation struct {
+	FromID int64  `json:"from_id"`
+	ToID   int64  `json:"to_id"`
+	Label  string `json:"label"` // 关系描述，如"包含"、"依赖"
+}

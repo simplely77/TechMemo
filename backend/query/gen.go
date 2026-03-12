@@ -23,6 +23,7 @@ var (
 	KnowledgePoint    *knowledgePoint
 	KnowledgeRelation *knowledgeRelation
 	Note              *note
+	NoteRootNode      *noteRootNode
 	NoteTag           *noteTag
 	NoteVersion       *noteVersion
 	Tag               *tag
@@ -37,6 +38,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	KnowledgePoint = &Q.KnowledgePoint
 	KnowledgeRelation = &Q.KnowledgeRelation
 	Note = &Q.Note
+	NoteRootNode = &Q.NoteRootNode
 	NoteTag = &Q.NoteTag
 	NoteVersion = &Q.NoteVersion
 	Tag = &Q.Tag
@@ -52,6 +54,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		KnowledgePoint:    newKnowledgePoint(db, opts...),
 		KnowledgeRelation: newKnowledgeRelation(db, opts...),
 		Note:              newNote(db, opts...),
+		NoteRootNode:      newNoteRootNode(db, opts...),
 		NoteTag:           newNoteTag(db, opts...),
 		NoteVersion:       newNoteVersion(db, opts...),
 		Tag:               newTag(db, opts...),
@@ -68,6 +71,7 @@ type Query struct {
 	KnowledgePoint    knowledgePoint
 	KnowledgeRelation knowledgeRelation
 	Note              note
+	NoteRootNode      noteRootNode
 	NoteTag           noteTag
 	NoteVersion       noteVersion
 	Tag               tag
@@ -85,6 +89,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		KnowledgePoint:    q.KnowledgePoint.clone(db),
 		KnowledgeRelation: q.KnowledgeRelation.clone(db),
 		Note:              q.Note.clone(db),
+		NoteRootNode:      q.NoteRootNode.clone(db),
 		NoteTag:           q.NoteTag.clone(db),
 		NoteVersion:       q.NoteVersion.clone(db),
 		Tag:               q.Tag.clone(db),
@@ -109,6 +114,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		KnowledgePoint:    q.KnowledgePoint.replaceDB(db),
 		KnowledgeRelation: q.KnowledgeRelation.replaceDB(db),
 		Note:              q.Note.replaceDB(db),
+		NoteRootNode:      q.NoteRootNode.replaceDB(db),
 		NoteTag:           q.NoteTag.replaceDB(db),
 		NoteVersion:       q.NoteVersion.replaceDB(db),
 		Tag:               q.Tag.replaceDB(db),
@@ -123,6 +129,7 @@ type queryCtx struct {
 	KnowledgePoint    IKnowledgePointDo
 	KnowledgeRelation IKnowledgeRelationDo
 	Note              INoteDo
+	NoteRootNode      INoteRootNodeDo
 	NoteTag           INoteTagDo
 	NoteVersion       INoteVersionDo
 	Tag               ITagDo
@@ -137,6 +144,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		KnowledgePoint:    q.KnowledgePoint.WithContext(ctx),
 		KnowledgeRelation: q.KnowledgeRelation.WithContext(ctx),
 		Note:              q.Note.WithContext(ctx),
+		NoteRootNode:      q.NoteRootNode.WithContext(ctx),
 		NoteTag:           q.NoteTag.WithContext(ctx),
 		NoteVersion:       q.NoteVersion.WithContext(ctx),
 		Tag:               q.Tag.WithContext(ctx),

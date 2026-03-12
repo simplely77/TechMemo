@@ -15,7 +15,7 @@ type NoteVersion struct {
 	ID        int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
 	NoteID    int64     `gorm:"column:note_id;not null" json:"note_id"`
 	ContentMd string    `gorm:"column:content_md;not null" json:"content_md"`
-	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
+	CreatedAt time.Time `gorm:"column:created_at;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 // TableName NoteVersion's table name

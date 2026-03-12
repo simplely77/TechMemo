@@ -15,7 +15,7 @@ type User struct {
 	ID           int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
 	Username     string    `gorm:"column:username;not null" json:"username"`
 	PasswordHash string    `gorm:"column:password_hash;not null" json:"password_hash"`
-	CreatedAt    time.Time `gorm:"column:created_at" json:"created_at"`
+	CreatedAt    time.Time `gorm:"column:created_at;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 // TableName User's table name

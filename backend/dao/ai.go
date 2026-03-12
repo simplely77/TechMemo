@@ -103,6 +103,38 @@ func (d *AIDao) GetLogsByNoteID(ctx context.Context, noteID int64) ([]*model.AiP
 		Find()
 }
 
+func (d *AIDao) SaveNoteRootNode(ctx context.Context, node *model.NoteRootNode) error {
+	return d.db.WithContext(ctx).Create(node).Error
+}
+
+func (d *AIDao) GetRootNodesByUserID(ctx context.Context, userID int64) ([]*model.NoteRootNode, error) {
+	var nodes []*model.NoteRootNode
+	err := d.db.WithContext(ctx).
+		Joins("JOIN knowledge_point ON knowledge_point.id = note_root_node.root_knowledge_id").
+		Where("knowledge_point.user_id = ?", userID).
+		Find(&nodes).Error
+	return nodes, err
+}
+
+func (d *AIDao) GetGlobalRelationsByUserID(ctx context.Context, userID int64) ([]*model.KnowledgeRelation, error) {
+	// 查 relation_type = 'global' 且 from 节点属于该用户
+	var relations []*model.KnowledgeRelation
+	err := d.db.WithContext(ctx).
+		Joins("JOIN knowledge_point ON knowledge_point.id = knowledge_relation.from_knowledge_id").
+		Where("knowledge_relation.relation_type = ? AND knowledge_point.user_id = ?", "global", userID).
+		Find(&relations).Error
+	return relations, err
+}
+
+func (d *AIDao) DeleteGlobalRelationsByUserID(ctx context.Context, userID int64) error {
+	return d.db.WithContext(ctx).Exec(`
+		DELETE FROM knowledge_relation
+		WHERE relation_type = 'global'
+		AND from_knowledge_id IN (
+			SELECT id FROM knowledge_point WHERE user_id = ?
+		)`, userID).Error
+}
+
 func NewAIDao(q *query.Query, db *gorm.DB) *AIDao {
 	return &AIDao{q: q, db: db}
 }

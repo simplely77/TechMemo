@@ -13,7 +13,7 @@ const TableNameAiProcessLog = "ai_process_log"
 // AiProcessLog mapped from table <ai_process_log>
 type AiProcessLog struct {
 	ID           int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	SourceNoteID int64     `gorm:"column:source_note_id" json:"source_note_id"`
+	SourceNoteID int64     `gorm:"column:source_note_id;not null" json:"source_note_id"`
 	TaskID       string    `gorm:"column:task_id;not null" json:"task_id"`
 	TargetType   string    `gorm:"column:target_type;not null" json:"target_type"`
 	TargetID     int64     `gorm:"column:target_id;not null" json:"target_id"`

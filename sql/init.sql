@@ -96,3 +96,14 @@ CREATE TABLE embedding (
     model_name VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 11. 笔记顶节点表（每篇笔记的根知识点，用于全局思维导图）
+CREATE TABLE note_root_node (
+    id BIGSERIAL PRIMARY KEY,
+    note_id BIGINT NOT NULL,
+    root_knowledge_id BIGINT NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    importance_score FLOAT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

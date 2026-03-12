@@ -33,3 +33,28 @@ func HandlerGetMindMap(aiService *service.AIService) gin.HandlerFunc {
 		response.Success(c, resp)
 	}
 }
+
+// @Summary 获取全局思维导图
+// @Description 以用户所有笔记的顶节点为节点，AI 分析关联关系，返回全局知识图谱
+// @Tags 思维导图
+// @Security BearerAuth
+// @Success 200 {object} response.Response{data=dto.GetGlobalMindMapResp} "获取成功"
+// @Router /api/v1/mindmap/global [get]
+func HandlerGetGlobalMindMap(aiService *service.AIService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userIDAny, exist := c.Get("user_id")
+		if !exist {
+			response.Fail(c, errors.Unauthorized)
+			return
+		}
+		userID := userIDAny.(int64)
+
+		resp, err := aiService.GetGlobalMindMap(c.Request.Context(), userID)
+		if err != nil {
+			response.Fail(c, errors.InternalErr)
+			return
+		}
+
+		response.Success(c, resp)
+	}
+}

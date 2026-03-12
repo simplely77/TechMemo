@@ -8,20 +8,20 @@ import (
 	"time"
 )
 
-const TableNameKnowledgePoint = "knowledge_point"
+const TableNameNoteRootNode = "note_root_node"
 
-// KnowledgePoint mapped from table <knowledge_point>
-type KnowledgePoint struct {
+// NoteRootNode mapped from table <note_root_node>
+type NoteRootNode struct {
 	ID              int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	UserID          int64     `gorm:"column:user_id;not null" json:"user_id"`
+	NoteID          int64     `gorm:"column:note_id;not null" json:"note_id"`
+	RootKnowledgeID int64     `gorm:"column:root_knowledge_id;not null" json:"root_knowledge_id"`
 	Name            string    `gorm:"column:name;not null" json:"name"`
 	Description     string    `gorm:"column:description" json:"description"`
-	SourceNoteID    int64     `gorm:"column:source_note_id" json:"source_note_id"`
 	ImportanceScore float64   `gorm:"column:importance_score" json:"importance_score"`
 	CreatedAt       time.Time `gorm:"column:created_at;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
-// TableName KnowledgePoint's table name
-func (*KnowledgePoint) TableName() string {
-	return TableNameKnowledgePoint
+// TableName NoteRootNode's table name
+func (*NoteRootNode) TableName() string {
+	return TableNameNoteRootNode
 }
