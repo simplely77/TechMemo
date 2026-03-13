@@ -251,8 +251,6 @@ func HandlerCreateNote(svc *service.NoteService) gin.HandlerFunc {
 - `POST /api/v1/search/semantic` — 语义搜索
 - `GET  /api/v1/search/keyword` — 关键词搜索
 - `POST /api/v1/qa/ask` — 智能问答
-- `GET  /api/v1/review/recommendations` — 复习推荐
-- `POST /api/v1/review/record` — 记录复习结果
 - `GET  /api/v1/stats/overview` — 统计概览
 - `GET  /api/v1/stats/categories` — 分类统计
 
