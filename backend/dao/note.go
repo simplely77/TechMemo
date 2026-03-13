@@ -114,6 +114,14 @@ func (n *NoteDao) GetNoteByID(ctx context.Context, id int64) (*model.Note, error
 	return note, nil
 }
 
+func (n *NoteDao) GetNotesByIDs(ctx context.Context, ids []int64) ([]*model.Note, error) {
+	return n.q.Note.
+		WithContext(ctx).
+		Where(n.q.Note.ID.In(ids...)).
+		Where(n.q.Note.Status.Neq("deleted")).
+		Find()
+}
+
 func (n *NoteDao) GetTagIDsByNoteID(ctx context.Context, noteID int64) ([]int64, error) {
 	var tagIDs []int64
 	err := n.q.NoteTag.

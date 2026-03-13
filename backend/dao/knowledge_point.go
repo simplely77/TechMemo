@@ -47,6 +47,13 @@ func (d *KnowledgePointDao) GetKnowledgePointByID(ctx context.Context, id int64)
 		First()
 }
 
+func (d *KnowledgePointDao) GetKnowledgePointsByIDs(ctx context.Context, ids []int64) ([]*model.KnowledgePoint, error) {
+	return d.q.KnowledgePoint.
+		WithContext(ctx).
+		Where(d.q.KnowledgePoint.ID.In(ids...)).
+		Find()
+}
+
 func (d *KnowledgePointDao) UpdateKnowledgePoint(ctx context.Context, id int64, params UpdateKnowledgePointParams) error {
 	updateFields := make(map[string]interface{})
 

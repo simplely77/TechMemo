@@ -1,6 +1,8 @@
 package bootstrap
 
 import (
+	aiclient "techmemo/backend/ai/client"
+	"techmemo/backend/config"
 	"techmemo/backend/dao"
 	"techmemo/backend/database"
 	"techmemo/backend/service"
@@ -13,6 +15,7 @@ type App struct {
 	NoteService           *service.NoteService
 	AIService             *service.AIService
 	KnowledgePointService *service.KnowledgePointService
+	SearchService         *service.SearchService
 }
 
 func InitApp() *App {
@@ -29,6 +32,17 @@ func InitApp() *App {
 	knowledgePointDao := dao.NewKnowledgePointDao(database.Q)
 	knowledgePointService := service.NewKnowledgePointService(knowledgePointDao, noteDao)
 
+	// 初始化 SearchService
+	searchDao := dao.NewSearchDao(database.Q, database.DB)
+	aiClient := aiclient.NewOpenAIClientFromConfig(config.AppConfig)
+	searchService := service.NewSearchService(
+		searchDao,
+		noteDao,
+		knowledgePointDao,
+		categoryDao,
+		aiClient,
+	)
+
 	return &App{
 		UserService:           userService,
 		CategoryService:       categoryService,
@@ -36,5 +50,6 @@ func InitApp() *App {
 		NoteService:           noteService,
 		AIService:             aiService,
 		KnowledgePointService: knowledgePointService,
+		SearchService:         searchService,
 	}
 }

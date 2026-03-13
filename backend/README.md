@@ -246,10 +246,7 @@ func HandlerCreateNote(svc *service.NoteService) gin.HandlerFunc {
 
 ### 待实现接口
 
-- `POST /api/v1/mindmap/generate` — 生成思维导图
-- `GET  /api/v1/mindmap/global` — 全局知识图谱
 - `POST /api/v1/search/semantic` — 语义搜索
-- `GET  /api/v1/search/keyword` — 关键词搜索
 - `POST /api/v1/qa/ask` — 智能问答
 - `GET  /api/v1/stats/overview` — 统计概览
 - `GET  /api/v1/stats/categories` — 分类统计
