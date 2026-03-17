@@ -17,8 +17,6 @@ import (
 // @Produce json
 // @Param request body dto.SemanticSearchReq true "搜索参数"
 // @Success 200 {object} response.Response{data=dto.SemanticSearchResp} "搜索成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 401 {object} response.Response "未授权"
 // @Router /api/v1/search/semantic [post]
 func HandlerSemanticSearch(searchService *service.SearchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
