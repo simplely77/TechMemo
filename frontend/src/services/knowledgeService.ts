@@ -1,4 +1,4 @@
-import request from '../utils/request'
+import { apiGet, apiPut, apiDelete } from '@/utils/api'
 
 export interface KnowledgePoint {
   id: number
@@ -14,17 +14,17 @@ export interface UpdateKnowledgePointRequest {
 }
 
 export const getKnowledgePoints = () => {
-  return request.get<{ code: number; message: string; data: KnowledgePoint[] }>('/knowledge-points')
+  return apiGet<KnowledgePoint[]>('/knowledge-points')
 }
 
 export const getKnowledgePoint = (id: number) => {
-  return request.get<{ code: number; message: string; data: KnowledgePoint }>(`/knowledge-points/${id}`)
+  return apiGet<KnowledgePoint>(`/knowledge-points/${id}`)
 }
 
 export const updateKnowledgePoint = (id: number, data: UpdateKnowledgePointRequest) => {
-  return request.put<{ code: number; message: string; data: KnowledgePoint }>(`/knowledge-points/${id}`, data)
+  return apiPut<KnowledgePoint>(`/knowledge-points/${id}`, data)
 }
 
 export const deleteKnowledgePoint = (id: number) => {
-  return request.delete<{ code: number; message: string }>(`/knowledge-points/${id}`)
+  return apiDelete<void>(`/knowledge-points/${id}`)
 }

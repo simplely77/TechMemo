@@ -19,13 +19,23 @@ type LoginReq struct {
 }
 
 type LoginResp struct {
-	Token    string `json:"token"`
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	UserID       int64  `json:"user_id"`
+	Username     string `json:"username"`
 }
 
 type ProfileResp struct {
 	UserID    int64     `json:"user_id"`
 	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"created_time"`
+}
+
+type RefreshTokenReq struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+type RefreshTokenResp struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }

@@ -36,6 +36,7 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 		{
 			auth.POST("/register", handler.HandlerRegister(app.UserService))
 			auth.POST("/login", handler.HandlerLogin(app.UserService))
+			auth.POST("/refresh", handler.HandlerRefreshToken(app.UserService))
 		}
 
 		// 需要认证的路由

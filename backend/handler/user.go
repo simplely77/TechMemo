@@ -106,3 +106,35 @@ func HandlerProfile(userService *service.UserService) gin.HandlerFunc {
 		response.Success(c, resp)
 	}
 }
+
+// @Summary 刷新Token
+// @Description 使用refreshToken获取新的accessToken和refreshToken
+// @Tags 授权
+// @Accept json
+// @Produce json
+// @Param data body dto.RefreshTokenReq true "刷新token参数"
+// @Success 200 {object} response.Response{data=dto.RefreshTokenResp} "刷新成功"
+// @Failure 401 {object} response.Response "token无效或已过期"
+// @Router /api/v1/auth/refresh [post]
+func HandlerRefreshToken(userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req dto.RefreshTokenReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Fail(c, errors.InvalidParam)
+			return
+		}
+
+		if req.RefreshToken == "" {
+			response.Fail(c, errors.InvalidParam)
+			return
+		}
+
+		resp, err := userService.RefreshToken(c.Request.Context(), req)
+		if err != nil {
+			response.FailErr(c, err)
+			return
+		}
+
+		response.Success(c, resp)
+	}
+}

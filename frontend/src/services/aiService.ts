@@ -1,4 +1,4 @@
-import request from '../utils/request'
+import { apiGet, apiPost } from '@/utils/api'
 
 export interface AIProcessResp {
   task_id: string
@@ -35,25 +35,25 @@ export interface GetGlobalMindMapResp {
 }
 
 export const processNoteAI = (noteId: number) => {
-  return request.post<{ code: number; message: string; data: AIProcessResp }>(`/ai/note/${noteId}`, {})
+  return apiPost<AIProcessResp>(`/ai/note/${noteId}`, {})
 }
 
 export const getNoteAIStatus = (noteId: number) => {
-  return request.get<{ code: number; message: string; data: GetNoteAIStatusResp }>(`/ai/note/${noteId}/status`)
+  return apiGet<GetNoteAIStatusResp>(`/ai/note/${noteId}/status`)
 }
 
 export const generateGlobalMindMap = () => {
-  return request.post<{ code: number; message: string; data: AIProcessResp }>('/ai/mindmap/global', {})
+  return apiPost<AIProcessResp>('/ai/mindmap/global', {})
 }
 
 export const getTaskStatus = (taskId: string) => {
-  return request.get<{ code: number; message: string; data: GetTaskStatusResp }>(`/ai/task/${taskId}/status`)
+  return apiGet<GetTaskStatusResp>(`/ai/task/${taskId}/status`)
 }
 
 export const getMindMap = (noteId: number) => {
-  return request.get<{ code: number; message: string; data: GetMindMapResp }>('/mindmap', { params: { note_id: noteId } })
+  return apiGet<GetMindMapResp>('/mindmap', { params: { note_id: noteId } })
 }
 
 export const getGlobalMindMap = () => {
-  return request.get<{ code: number; message: string; data: GetGlobalMindMapResp }>('/mindmap/global')
+  return apiGet<GetGlobalMindMapResp>('/mindmap/global')
 }

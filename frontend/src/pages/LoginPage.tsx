@@ -28,11 +28,13 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const res = await login(form)
-      const { token, user_id, username } = res.data.data
-      setAuth(token, { user_id, username })
+      const { access_token, refresh_token, user_id, username } = res
+      localStorage.setItem('access_token', access_token)
+      localStorage.setItem('refresh_token', refresh_token)
+      setAuth(access_token, { user_id, username })
       navigate('/home')
     } catch (err: any) {
-      setError(err.response?.data?.message || '登录失败，请重试')
+      setError(err.message || '登录失败，请重试')
     } finally {
       setLoading(false)
     }

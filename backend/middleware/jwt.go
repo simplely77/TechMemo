@@ -46,6 +46,16 @@ func JWTAuth(userService *service.UserService) gin.HandlerFunc {
 			return
 		}
 
+		// 验证token类型必须是accessToken
+		if claims.TokenType != utils.AccessToken {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    401,
+				"message": "认证令牌类型错误",
+			})
+			c.Abort()
+			return
+		}
+
 		userID := claims.UserID
 
 		if err := userService.ValidateUser(c.Request.Context(), userID); err != nil {

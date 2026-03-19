@@ -31,8 +31,9 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret     string `mapstructure:"secret"`
-	ExpireHour int    `mapstructure:"expire_hour"`
+	Secret                   string `mapstructure:"secret"`
+	AccessTokenExpireHour    int    `mapstructure:"access_token_expire_hour"`
+	RefreshTokenExpireDay    int    `mapstructure:"refresh_token_expire_day"`
 }
 
 type RedisConfig struct {
@@ -104,7 +105,8 @@ func setDefaults() {
 
 	// JWT defaults
 	viper.SetDefault("jwt.secret", "your-secret-key-change-in-production")
-	viper.SetDefault("jwt.expire_hour", 24)
+	viper.SetDefault("jwt.access_token_expire_hour", 24)
+	viper.SetDefault("jwt.refresh_token_expire_day", 30)
 
 	// AI defaults
 	viper.SetDefault("ai.provider", "openai")

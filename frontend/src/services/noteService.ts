@@ -1,4 +1,6 @@
-import request from '../utils/request'
+import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api'
+
+// ============ 类型定义 ============
 
 export interface Note {
   id: number
@@ -28,34 +30,77 @@ export interface NoteVersion {
   created_time: string
 }
 
-export const getNotes = () => {
-  return request.get<{ code: number; message: string; data: Note[] }>('/notes')
+export interface GetNotesQuery {
+  category_id?: number
+  tag_ids?: number[]
+  keyword?: string
+  note_type?: string
+  page?: number
+  page_size?: number
+  sort?: string
 }
 
+export interface GetNotesResponse {
+  notes: Note[]
+  total: number
+  page: number
+  page_size: number
+}
+
+// ============ API 调用 ============
+
+/**
+ * 获取笔记列表
+ */
+export const getNotes = (query?: GetNotesQuery) => {
+  return apiGet<GetNotesResponse>('/notes', { params: query })
+}
+
+/**
+ * 创建笔记
+ */
 export const createNote = (data: CreateNoteRequest) => {
-  return request.post<{ code: number; message: string; data: Note }>('/notes', data)
+  return apiPost<Note>('/notes', data)
 }
 
+/**
+ * 获取笔记详情
+ */
 export const getNote = (id: number) => {
-  return request.get<{ code: number; message: string; data: Note }>(`/notes/${id}`)
+  return apiGet<Note>(`/notes/${id}`)
 }
 
+/**
+ * 更新笔记
+ */
 export const updateNote = (id: number, data: UpdateNoteRequest) => {
-  return request.put<{ code: number; message: string; data: Note }>(`/notes/${id}`, data)
+  return apiPut<Note>(`/notes/${id}`, data)
 }
 
+/**
+ * 更新笔记标签
+ */
 export const updateNoteTags = (id: number, tagIds: number[]) => {
-  return request.put<{ code: number; message: string; data: Note }>(`/notes/${id}/tags`, { tag_ids: tagIds })
+  return apiPut<Note>(`/notes/${id}/tags`, { tag_ids: tagIds })
 }
 
+/**
+ * 删除笔记
+ */
 export const deleteNote = (id: number) => {
-  return request.delete<{ code: number; message: string }>(`/notes/${id}`)
+  return apiDelete<void>(`/notes/${id}`)
 }
 
-export const getNoteVersions = (id: number) => {
-  return request.get<{ code: number; message: string; data: NoteVersion[] }>(`/notes/${id}/versions`)
+/**
+ * 获取笔记版本历史
+ */
+export const getNoteVersions = (id: number, sort: string = 'created_at_desc') => {
+  return apiGet<NoteVersion[]>(`/notes/${id}/versions`, { params: { sort } })
 }
 
+/**
+ * 恢复笔记到指定版本
+ */
 export const restoreNote = (id: number, versionId: number) => {
-  return request.post<{ code: number; message: string; data: Note }>(`/notes/${id}/versions/${versionId}/restore`, {})
+  return apiPost<Note>(`/notes/${id}/versions/${versionId}/restore`, {})
 }

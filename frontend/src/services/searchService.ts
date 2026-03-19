@@ -1,4 +1,4 @@
-import request from '../utils/request'
+import { apiPost } from '@/utils/api'
 
 export interface SearchResult {
   id: number
@@ -20,9 +20,9 @@ export interface SemanticSearchResponse {
 }
 
 export const semanticSearch = (data: SemanticSearchRequest) => {
-  return request.post<{ code: number; message: string; data: SemanticSearchResponse }>('/search/semantic', data)
+  return apiPost<SemanticSearchResponse>('/search/semantic', data)
 }
 
 export const askQuestion = (question: string) => {
-  return request.post<{ code: number; message: string; data: any }>('/qa/ask', { question })
+  return apiPost<any>('/qa/ask', { question })
 }

@@ -1,4 +1,4 @@
-import request from '../utils/request'
+import { apiGet, apiPost } from '@/utils/api'
 
 export interface LoginRequest {
   username: string
@@ -11,7 +11,8 @@ export interface RegisterRequest {
 }
 
 export interface LoginResponse {
-  token: string
+  access_token: string
+  refresh_token: string
   user_id: number
   username: string
 }
@@ -28,14 +29,27 @@ export interface ProfileResponse {
   created_time: string
 }
 
+export interface RefreshTokenRequest {
+  refresh_token: string
+}
+
+export interface RefreshTokenResponse {
+  access_token: string
+  refresh_token: string
+}
+
 export const login = (data: LoginRequest) => {
-  return request.post<{ code: number; message: string; data: LoginResponse }>('/auth/login', data)
+  return apiPost<LoginResponse>('/auth/login', data)
 }
 
 export const register = (data: RegisterRequest) => {
-  return request.post<{ code: number; message: string; data: RegisterResponse }>('/auth/register', data)
+  return apiPost<RegisterResponse>('/auth/register', data)
 }
 
 export const getProfile = () => {
-  return request.get<{ code: number; message: string; data: ProfileResponse }>('/user/profile')
+  return apiGet<ProfileResponse>('/auth/profile')
+}
+
+export const refreshToken = (data: RefreshTokenRequest) => {
+  return apiPost<RefreshTokenResponse>('/auth/refresh', data)
 }

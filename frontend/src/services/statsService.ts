@@ -1,4 +1,4 @@
-import request from '../utils/request'
+import { apiGet } from '@/utils/api'
 
 export interface StatsOverview {
   total_notes: number
@@ -14,9 +14,9 @@ export interface CategoryStats {
 }
 
 export const getStatsOverview = () => {
-  return request.get<{ code: number; message: string; data: StatsOverview }>('/stats/overview')
+  return apiGet<StatsOverview>('/stats/overview')
 }
 
 export const getCategoryStats = () => {
-  return request.get<{ code: number; message: string; data: CategoryStats[] }>('/stats/categories')
+  return apiGet<CategoryStats[]>('/stats/categories')
 }

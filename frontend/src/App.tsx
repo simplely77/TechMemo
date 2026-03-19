@@ -14,11 +14,12 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route element={<ProtectedRoute/>}>
           <Route path="/home" element={<HomePage/>} />
-          <Route path="/note" element={<NotePage/>} />
+          <Route path="/notes" element={<NotePage/>} />
         </Route>
       </Routes>
     </BrowserRouter>
