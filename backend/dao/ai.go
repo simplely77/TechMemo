@@ -117,11 +117,11 @@ func (d *AIDao) GetRootNodesByUserID(ctx context.Context, userID int64) ([]*mode
 }
 
 func (d *AIDao) GetGlobalRelationsByUserID(ctx context.Context, userID int64) ([]*model.KnowledgeRelation, error) {
-	// 查 relation_type = 'global' 且 from 节点属于该用户
+	// 查 relation_type LIKE 'global:%' 且 from 节点属于该用户
 	var relations []*model.KnowledgeRelation
 	err := d.db.WithContext(ctx).
 		Joins("JOIN knowledge_point ON knowledge_point.id = knowledge_relation.from_knowledge_id").
-		Where("knowledge_relation.relation_type = ? AND knowledge_point.user_id = ?", "global", userID).
+		Where("knowledge_relation.relation_type LIKE ? AND knowledge_point.user_id = ?", "global:%", userID).
 		Find(&relations).Error
 	return relations, err
 }
@@ -129,7 +129,7 @@ func (d *AIDao) GetGlobalRelationsByUserID(ctx context.Context, userID int64) ([
 func (d *AIDao) DeleteGlobalRelationsByUserID(ctx context.Context, userID int64) error {
 	return d.db.WithContext(ctx).Exec(`
 		DELETE FROM knowledge_relation
-		WHERE relation_type = 'global'
+		WHERE relation_type LIKE 'global:%'
 		AND from_knowledge_id IN (
 			SELECT id FROM knowledge_point WHERE user_id = ?
 		)`, userID).Error

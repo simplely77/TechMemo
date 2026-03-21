@@ -6,7 +6,7 @@ import (
 
 type CreateNoteReq struct {
 	Title      string  `json:"title" binding:"required"`
-	ContentMD  string  `josn:"content_md"`
+	ContentMD  string  `json:"content_md"`
 	CategoryID int64   `json:"category_id" binding:"required"`
 	TagIDs     []int64 `json:"tag_ids"`
 }
