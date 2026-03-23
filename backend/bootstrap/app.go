@@ -16,6 +16,7 @@ type App struct {
 	AIService             *service.AIService
 	KnowledgePointService *service.KnowledgePointService
 	SearchService         *service.SearchService
+	StatsService          *service.StatsService
 }
 
 func InitApp() *App {
@@ -43,6 +44,14 @@ func InitApp() *App {
 		aiClient,
 	)
 
+	statsService := service.NewStatsServcie(
+		noteDao,
+		categoryDao,
+		knowledgePointDao,
+		tagDao,
+		aiDao,
+	)
+
 	return &App{
 		UserService:           userService,
 		CategoryService:       categoryService,
@@ -51,5 +60,6 @@ func InitApp() *App {
 		AIService:             aiService,
 		KnowledgePointService: knowledgePointService,
 		SearchService:         searchService,
+		StatsService:          statsService,
 	}
 }

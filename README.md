@@ -940,7 +940,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 8. 智能搜索与问答模块（待实现）
+## 8. 智能搜索与问答模块
 
 ### 8.1 语义搜索笔记
 ```
@@ -1051,9 +1051,9 @@ Authorization: Bearer {token}
     "total_knowledge_points": 250,
     "total_categories": 10,
     "total_tags": 50,
-    "recent_notes_count": 5,
-    "ai_process_count": 150,
-    "last_note_at": "2026-01-13T10:30:00Z"
+    // "recent_notes_count": 5,
+    // "ai_process_count": 150,
+    // "last_note_at": "2026-01-13T10:30:00Z"
   }
 }
 ```

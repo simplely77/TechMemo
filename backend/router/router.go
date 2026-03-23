@@ -109,8 +109,8 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 			// 统计分析
 			stats := authorized.Group("/stats")
 			{
-				stats.GET("/overview", nil)   // 获取统计概览
-				stats.GET("/categories", nil) // 分类统计
+				stats.GET("/overview", handler.HandlerOverview(app.StatsService))   // 获取统计概览
+				stats.GET("/categories", handler.HandlerCategories(app.StatsService)) // 分类统计
 			}
 		}
 	}

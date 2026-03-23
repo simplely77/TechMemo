@@ -12,6 +12,13 @@ type CategoryDao struct {
 	q *query.Query
 }
 
+func (c *CategoryDao) CountCategoriesByUid(ctx context.Context, userID int64) (int64, error) {
+	return c.q.Category.
+		WithContext(ctx).
+		Where(c.q.Category.UserID.Eq(userID)).
+		Count()
+}
+
 func (c *CategoryDao) CheckCategoryByIDAndUserID(ctx context.Context, id int64, userID int64) (bool, error) {
 	count, err := c.q.Category.
 		WithContext(ctx).

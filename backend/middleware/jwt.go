@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"strings"
 	"techmemo/backend/config"
@@ -27,6 +28,7 @@ func JWTAuth(userService *service.UserService) gin.HandlerFunc {
 		// 检查格式 "Bearer <token>"
 		parts := strings.SplitN(authHeader, " ", 2)
 		if !(len(parts) == 2 && parts[0] == "Bearer") {
+			log.Println(parts)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code":    401,
 				"message": "认证令牌格式错误",

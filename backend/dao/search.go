@@ -28,6 +28,7 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 	targetType string,
 	userID int64,
 	topK int,
+	threshold float32,
 ) ([]SearchResult, error) {
 	var results []SearchResult
 
@@ -43,6 +44,7 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 			WHERE e.target_type = 'note'
 			  AND n.user_id = $2
 			  AND n.status != 'deleted'
+			  AND (e.vector <=> $1) < $4
 			ORDER BY distance
 			LIMIT $3
 		`
@@ -53,6 +55,7 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 			INNER JOIN knowledge_point kp ON e.target_id = kp.id
 			WHERE e.target_type = 'knowledge'
 			  AND kp.user_id = $2
+			  AND (e.vector <=> $1) < $4
 			ORDER BY distance
 			LIMIT $3
 		`
@@ -63,6 +66,7 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 		pgvector.NewVector(vector),
 		userID,
 		topK,
+		threshold,
 	).Scan(&results).Error
 
 	return results, err

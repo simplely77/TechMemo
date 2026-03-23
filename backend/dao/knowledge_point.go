@@ -10,6 +10,20 @@ type KnowledgePointDao struct {
 	q *query.Query
 }
 
+func (d *KnowledgePointDao) CountKnowledgePointsByNids(ctx context.Context, nids []int64) (int64, error) {
+	return d.q.KnowledgePoint.
+		WithContext(ctx).
+		Where(d.q.KnowledgePoint.SourceNoteID.In(nids...)).
+		Count()
+}
+
+func (d *KnowledgePointDao) CountKnowledgePointsByUid(ctx context.Context, userID int64) (int64, error) {
+	return d.q.KnowledgePoint.
+		WithContext(ctx).
+		Where(d.q.KnowledgePoint.UserID.Eq(userID)).
+		Count()
+}
+
 func (d *KnowledgePointDao) GetKnowledgePoints(ctx context.Context, params GetKnowledgePointsParams) ([]*model.KnowledgePoint, int64, error) {
 	q := d.q.KnowledgePoint.WithContext(ctx).
 		Where(d.q.KnowledgePoint.UserID.Eq(params.UserID))

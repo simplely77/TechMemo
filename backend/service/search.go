@@ -8,6 +8,8 @@ import (
 	"techmemo/backend/handler/dto"
 )
 
+const Threshold = 0.5
+
 type SearchService struct {
 	searchDao   *dao.SearchDao
 	noteDao     *dao.NoteDao
@@ -35,6 +37,7 @@ func (s *SearchService) SemanticSearch(
 		req.SearchType,
 		userID,
 		req.TopK,
+		Threshold,
 	)
 	if err != nil {
 		return nil, errors.InternalErr
@@ -194,4 +197,3 @@ func NewSearchService(
 		aiClient:    aiClient,
 	}
 }
-

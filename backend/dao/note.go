@@ -14,6 +14,22 @@ type NoteDao struct {
 	q *query.Query
 }
 
+func (n *NoteDao) GetNotesByCid(ctx context.Context, cid int64) ([]*model.Note, error) {
+	return n.q.Note.
+		WithContext(ctx).
+		Where(n.q.Note.CategoryID.Eq(cid)).
+		Where(n.q.Note.Status.Neq("deleted")).
+		Find()
+}
+
+func (n *NoteDao) CountNotesByUid(ctx context.Context, userID int64) (int64, error) {
+	return n.q.Note.
+		WithContext(ctx).
+		Where(n.q.Note.UserID.Eq(userID)).
+		Where(n.q.Note.Status.Neq("deleted")).
+		Count()
+}
+
 func (n *NoteDao) GetNoteVersionByID(ctx context.Context, id int64) (*model.NoteVersion, error) {
 	return n.q.NoteVersion.
 		WithContext(ctx).
