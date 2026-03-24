@@ -19,6 +19,8 @@ var (
 	Q                 = new(Query)
 	AiProcessLog      *aiProcessLog
 	Category          *category
+	ChatMessage       *chatMessage
+	ChatSession       *chatSession
 	Embedding         *embedding
 	KnowledgePoint    *knowledgePoint
 	KnowledgeRelation *knowledgeRelation
@@ -34,6 +36,8 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
 	AiProcessLog = &Q.AiProcessLog
 	Category = &Q.Category
+	ChatMessage = &Q.ChatMessage
+	ChatSession = &Q.ChatSession
 	Embedding = &Q.Embedding
 	KnowledgePoint = &Q.KnowledgePoint
 	KnowledgeRelation = &Q.KnowledgeRelation
@@ -50,6 +54,8 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		db:                db,
 		AiProcessLog:      newAiProcessLog(db, opts...),
 		Category:          newCategory(db, opts...),
+		ChatMessage:       newChatMessage(db, opts...),
+		ChatSession:       newChatSession(db, opts...),
 		Embedding:         newEmbedding(db, opts...),
 		KnowledgePoint:    newKnowledgePoint(db, opts...),
 		KnowledgeRelation: newKnowledgeRelation(db, opts...),
@@ -67,6 +73,8 @@ type Query struct {
 
 	AiProcessLog      aiProcessLog
 	Category          category
+	ChatMessage       chatMessage
+	ChatSession       chatSession
 	Embedding         embedding
 	KnowledgePoint    knowledgePoint
 	KnowledgeRelation knowledgeRelation
@@ -85,6 +93,8 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		db:                db,
 		AiProcessLog:      q.AiProcessLog.clone(db),
 		Category:          q.Category.clone(db),
+		ChatMessage:       q.ChatMessage.clone(db),
+		ChatSession:       q.ChatSession.clone(db),
 		Embedding:         q.Embedding.clone(db),
 		KnowledgePoint:    q.KnowledgePoint.clone(db),
 		KnowledgeRelation: q.KnowledgeRelation.clone(db),
@@ -110,6 +120,8 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		db:                db,
 		AiProcessLog:      q.AiProcessLog.replaceDB(db),
 		Category:          q.Category.replaceDB(db),
+		ChatMessage:       q.ChatMessage.replaceDB(db),
+		ChatSession:       q.ChatSession.replaceDB(db),
 		Embedding:         q.Embedding.replaceDB(db),
 		KnowledgePoint:    q.KnowledgePoint.replaceDB(db),
 		KnowledgeRelation: q.KnowledgeRelation.replaceDB(db),
@@ -125,6 +137,8 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 type queryCtx struct {
 	AiProcessLog      IAiProcessLogDo
 	Category          ICategoryDo
+	ChatMessage       IChatMessageDo
+	ChatSession       IChatSessionDo
 	Embedding         IEmbeddingDo
 	KnowledgePoint    IKnowledgePointDo
 	KnowledgeRelation IKnowledgeRelationDo
@@ -140,6 +154,8 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		AiProcessLog:      q.AiProcessLog.WithContext(ctx),
 		Category:          q.Category.WithContext(ctx),
+		ChatMessage:       q.ChatMessage.WithContext(ctx),
+		ChatSession:       q.ChatSession.WithContext(ctx),
 		Embedding:         q.Embedding.WithContext(ctx),
 		KnowledgePoint:    q.KnowledgePoint.WithContext(ctx),
 		KnowledgeRelation: q.KnowledgeRelation.WithContext(ctx),

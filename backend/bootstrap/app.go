@@ -17,6 +17,7 @@ type App struct {
 	KnowledgePointService *service.KnowledgePointService
 	SearchService         *service.SearchService
 	StatsService          *service.StatsService
+	ChatService           *service.ChatService
 }
 
 func InitApp() *App {
@@ -28,8 +29,9 @@ func InitApp() *App {
 	tagService := service.NewTagService(tagDao)
 	noteDao := dao.NewNoteDao(database.Q)
 	noteService := service.NewNoteService(noteDao, categoryDao, tagDao, database.Q)
+	chatDao := dao.NewChatDao(database.Q)
 	aiDao := dao.NewAIDao(database.Q, database.DB)
-	aiService := service.NewAIService(aiDao, noteDao)
+	aiService := service.NewAIService(aiDao, noteDao, chatDao)
 	knowledgePointDao := dao.NewKnowledgePointDao(database.Q)
 	knowledgePointService := service.NewKnowledgePointService(knowledgePointDao, noteDao)
 
@@ -52,6 +54,17 @@ func InitApp() *App {
 		aiDao,
 	)
 
+	// 初始化 ChatService
+	chatService := service.NewChatService(
+		chatDao,
+		searchDao,
+		aiDao,
+		noteDao,
+		knowledgePointDao,
+		aiClient,
+		nil, // queue 在 main.go 中设置
+	)
+
 	return &App{
 		UserService:           userService,
 		CategoryService:       categoryService,
@@ -61,5 +74,6 @@ func InitApp() *App {
 		KnowledgePointService: knowledgePointService,
 		SearchService:         searchService,
 		StatsService:          statsService,
+		ChatService:           chatService,
 	}
 }

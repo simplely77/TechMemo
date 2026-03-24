@@ -34,3 +34,8 @@ type GlobalRelation struct {
 	ToID   int64  `json:"to_id"`
 	Label  string `json:"label"` // 关系描述，如"包含"、"依赖"
 }
+
+type ChatMessage struct {
+	Role    string // "user"/"assistant"/"system"
+	Content string
+}

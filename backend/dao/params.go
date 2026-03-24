@@ -42,3 +42,18 @@ type UpdateKnowledgePointParams struct {
 	Description     string
 	ImportanceScore float64
 }
+
+// CreateSessionParams 创建会话的参数
+type CreateSessionParams struct {
+	UserID int64
+	Title  string
+}
+
+// CreateMessageParams 创建消息的参数
+type CreateMessageParams struct {
+	SessionID  int64
+	UserID     int64
+	Role       string
+	Content    string
+	TokenCount int32
+}

@@ -106,6 +106,16 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 			authorized.POST("/search/semantic", handler.HandlerSemanticSearch(app.SearchService)) // 语义搜索
 			authorized.POST("/qa/ask", nil)                                                       // 智能问答
 
+		// 聊天
+		chat := authorized.Group("/chat")
+		{
+			chat.POST("/sessions", handler.HandlerCreateSession(app.ChatService))
+			chat.GET("/sessions", handler.HandlerGetSessions(app.ChatService))
+			chat.DELETE("/sessions/:id", handler.HandlerDeleteSession(app.ChatService))
+			chat.POST("/sessions/:id/messages", handler.HandlerSendMessage(app.ChatService))
+			chat.GET("/sessions/:id/messages", handler.HandlerGetMessages(app.ChatService))
+		}
+
 			// 统计分析
 			stats := authorized.Group("/stats")
 			{

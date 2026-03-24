@@ -25,6 +25,8 @@ type AIClient interface {
 	GetEmbedding(ctx context.Context, content string) ([]float32, error)
 	// 通用文本处理
 	ProcessText(ctx context.Context, prompt string, content string) (string, error)
+	// 上下文文本处理
+	ChatWithContext(ctx context.Context, messages []ChatMessage) (string, error)
 	// 全局思维导图 - 分析多个顶节点之间的关联关系
 	BuildGlobalMindMap(ctx context.Context, nodes []GlobalNode) ([]GlobalRelation, error)
 	// 获取当前使用的模型名称
@@ -47,6 +49,8 @@ type OpenAIClient struct {
 	chatModel        string
 	embeddingModel   string
 }
+
+const maxRetries = 3
 
 // NewOpenAIClientFromConfig 从拆分后的配置创建客户端
 func NewOpenAIClientFromConfig(cfg *config.Config) *OpenAIClient {
@@ -74,7 +78,6 @@ func isRetryable(err error) bool {
 
 // 通用文本处理
 func (c *OpenAIClient) ProcessText(ctx context.Context, prompt string, content string) (string, error) {
-	const maxRetries = 3
 	var lastErr error
 	for i := range maxRetries {
 		resp, err := c.chatClient.CreateChatCompletion(
@@ -310,4 +313,47 @@ func (c *OpenAIClient) BuildGlobalMindMap(ctx context.Context, nodes []GlobalNod
 	}
 
 	return response.Relations, nil
+}
+
+func (c *OpenAIClient) ChatWithContext(ctx context.Context, messages []ChatMessage) (string, error) {
+	var lastErr error
+
+	var openaiMessages []openai.ChatCompletionMessage
+	for _, m := range messages {
+		openaiMessages = append(openaiMessages, openai.ChatCompletionMessage{
+			Role:    m.Role,
+			Content: m.Content,
+		})
+	}
+
+	for i := 0; i < maxRetries; i++ {
+		resp, err := c.chatClient.CreateChatCompletion(
+			ctx,
+			openai.ChatCompletionRequest{
+				Model:       c.chatModel,
+				Messages:    openaiMessages,
+				Temperature: 0.3,
+				MaxTokens:   4000,
+			},
+		)
+		if err == nil {
+			if len(resp.Choices) == 0 {
+				return "", fmt.Errorf("AI返回空结果")
+			}
+			return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+		}
+
+		if !isRetryable(err) {
+			return "", fmt.Errorf("AI处理失败: %w", err)
+		}
+
+		lastErr = err
+		wait := time.Duration(1<<i) * time.Second
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return "", fmt.Errorf("AI处理失败（重试%d次）: %w", maxRetries, lastErr)
 }

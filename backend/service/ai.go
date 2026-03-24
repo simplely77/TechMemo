@@ -17,6 +17,7 @@ import (
 
 type AIService struct {
 	aiDao    *dao.AIDao
+	chatDao  *dao.ChatDao
 	noteDao  *dao.NoteDao
 	queue    queue.Queue
 	aiClient aiclient.AIClient
@@ -168,13 +169,13 @@ func (a *AIService) ProcessTask(ctx context.Context, task queue.AITask) {
 
 		switch logItem.ProcessType {
 		case "classify":
-			a.handleClassify(ctx, logItem)
+			go a.handleClassify(ctx, logItem)
 		case "extract":
-			a.handleExtract(ctx, logItem)
+			go a.handleExtract(ctx, logItem)
 		case "embedding":
-			a.handleEmbedding(ctx, logItem)
+			go a.handleEmbedding(ctx, logItem)
 		case "global_mindmap":
-			a.handleGlobalMindMap(ctx, logItem)
+			go a.handleGlobalMindMap(ctx, logItem)
 		default:
 			a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
 		}
@@ -355,6 +356,14 @@ func (a *AIService) handleEmbedding(ctx context.Context, logItem *model.AiProces
 			return
 		}
 		text = kp.Name + "\n" + kp.Description
+	case "chat_message":
+		msg, err := a.chatDao.GetMessageByID(ctx, logItem.TargetID)
+		if err != nil {
+			a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
+			log.Printf("获取聊天消息失败: %v", err)
+			return
+		}
+		text = msg.Content
 	default:
 		a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
 		return
@@ -526,9 +535,10 @@ func generateGlobalTaskID(userID int64) string {
 	return fmt.Sprintf("global:%d:%s", userID, uuid.NewString())
 }
 
-func NewAIService(aiDao *dao.AIDao, noteDao *dao.NoteDao) *AIService {
+func NewAIService(aiDao *dao.AIDao, noteDao *dao.NoteDao, chatDao *dao.ChatDao) *AIService {
 	return &AIService{
 		aiDao:   aiDao,
 		noteDao: noteDao,
+		chatDao: chatDao,
 	}
 }
