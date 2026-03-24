@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	aiclient "techmemo/backend/ai/client"
 	"techmemo/backend/ai/queue"
 	"techmemo/backend/ai/worker"
 	"techmemo/backend/bootstrap"
@@ -42,9 +41,7 @@ func main() {
 		log.Println("使用内存队列（仅开发环境）")
 	}
 	app.AIService.SetQueue(q)
-
-	aiClient := aiclient.NewOpenAIClientFromConfig(config.AppConfig)
-	app.AIService.SetAIClient(aiClient)
+	app.ChatService.SetQueue(q)
 
 	handler := worker.NewHandler(app.AIService)
 
@@ -53,7 +50,7 @@ func main() {
 
 	// 启动worker
 	go func() {
-		if err := worker.NewWorker(app.AIService.GetQueue(), handler, 1).Start(workerCtx); err != nil {
+		if err := worker.NewWorker(q, handler, 1).Start(workerCtx); err != nil {
 			log.Printf("Worker启动失败: %v", err)
 		}
 	}()

@@ -1,7 +1,11 @@
 package handler
 
 import (
+	"fmt"
+	"log"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"techmemo/backend/common/errors"
 	"techmemo/backend/common/response"
@@ -91,7 +95,7 @@ func HandlerGetSessions(svc *service.ChatService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "会话ID"
 // @Success 200 {object} response.Response
-// @Router /api/v1/chat/sessions/:id [delete]
+// @Router /api/v1/chat/sessions/{id} [delete]
 func HandlerDeleteSession(svc *service.ChatService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
@@ -117,7 +121,7 @@ func HandlerDeleteSession(svc *service.ChatService) gin.HandlerFunc {
 // @Param id path int true "会话ID"
 // @Param request body dto.SendMessageReq true "消息内容"
 // @Success 200 {object} response.Response{data=dto.ChatMessageResp}
-// @Router /api/v1/chat/sessions/:id/messages [post]
+// @Router /api/v1/chat/sessions/{id}/messages [post]
 func HandlerSendMessage(svc *service.ChatService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
@@ -149,6 +153,75 @@ func HandlerSendMessage(svc *service.ChatService) gin.HandlerFunc {
 	}
 }
 
+// @Summary 发送消息(流式返回)
+// @Tags 聊天
+// @Accept json
+// @Produce text/event-stream
+// @Security BearerAuth
+// @Param id path int true "会话ID"
+// @Param request body dto.SendMessageReq true "消息内容"
+// @Success 200 {string} string "SSE stream"
+// @Router /api/v1/chat/sessions/{id}/stream [post]
+func HandlerSendMessageStream(svc *service.ChatService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
+
+		sessionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			response.Fail(c, errors.InvalidParam)
+			return
+		}
+
+		var req dto.SendMessageReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Fail(c, errors.InvalidParam)
+			return
+		}
+
+		// 设置 SSE 头
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("Transfer-Encoding", "chunked")
+
+		flusher, ok := c.Writer.(http.Flusher)
+		if !ok {
+			c.String(http.StatusInternalServerError, "Streaming unsupported")
+			return
+		}
+
+		ctx := c.Request.Context()
+
+		// 用于收集完整回答（后面存数据库）
+		var fullContent strings.Builder
+
+		err = svc.SendMessageStream(
+			ctx,
+			sessionID,
+			userID,
+			req.Content,
+			func(delta string) {
+				// 累积完整回答
+				fullContent.WriteString(delta)
+
+				// SSE 输出
+				fmt.Fprintf(c.Writer, "data: %s\n\n", delta)
+				flusher.Flush()
+			},
+		)
+
+		if err != nil {
+			fmt.Fprintf(c.Writer, "data: [ERROR] %s\n\n", err.Error())
+			flusher.Flush()
+			return
+		}
+
+		// 结束标记
+		fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+		flusher.Flush()
+	}
+}
+
 // @Summary 获取会话消息历史
 // @Tags 聊天
 // @Accept json
@@ -158,12 +231,13 @@ func HandlerSendMessage(svc *service.ChatService) gin.HandlerFunc {
 // @Param page query int false "页码" default(1)
 // @Param page_size query int false "每页数量" default(20)
 // @Success 200 {object} response.Response{data=dto.ChatMessageListResp}
-// @Router /api/v1/chat/sessions/:id/messages [get]
+// @Router /api/v1/chat/sessions/{id}/messages [get]
 func HandlerGetMessages(svc *service.ChatService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
 		sessionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
+			log.Println(err)
 			response.Fail(c, errors.InvalidParam)
 			return
 		}

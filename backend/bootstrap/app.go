@@ -31,7 +31,7 @@ func InitApp() *App {
 	noteService := service.NewNoteService(noteDao, categoryDao, tagDao, database.Q)
 	chatDao := dao.NewChatDao(database.Q)
 	aiDao := dao.NewAIDao(database.Q, database.DB)
-	aiService := service.NewAIService(aiDao, noteDao, chatDao)
+
 	knowledgePointDao := dao.NewKnowledgePointDao(database.Q)
 	knowledgePointService := service.NewKnowledgePointService(knowledgePointDao, noteDao)
 
@@ -43,6 +43,13 @@ func InitApp() *App {
 		noteDao,
 		knowledgePointDao,
 		categoryDao,
+		aiClient,
+	)
+
+	aiService := service.NewAIService(
+		aiDao,
+		noteDao,
+		chatDao,
 		aiClient,
 	)
 
@@ -62,7 +69,6 @@ func InitApp() *App {
 		noteDao,
 		knowledgePointDao,
 		aiClient,
-		nil, // queue 在 main.go 中设置
 	)
 
 	return &App{

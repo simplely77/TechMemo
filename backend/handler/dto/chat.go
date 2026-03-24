@@ -1,8 +1,7 @@
 package dto
 
 type SendMessageReq struct {
-	SessionID int64  `json:"session_id" binding:"required"`
-	Content   string `json:"content" binding:"required,min=1,max=5000"`
+	Content string `json:"content" binding:"required,min=1,max=5000"`
 }
 
 type CreateSessionResp struct {
@@ -14,9 +13,9 @@ type CreateSessionResp struct {
 
 type ChatSessionListResp struct {
 	Sessions []CreateSessionResp `json:"sessions"`
-	Total    int64              `json:"total"`
-	Page     int                `json:"page"`
-	PageSize int                `json:"page_size"`
+	Total    int64               `json:"total"`
+	Page     int                 `json:"page"`
+	PageSize int                 `json:"page_size"`
 }
 
 type ChatMessageResp struct {
@@ -29,7 +28,7 @@ type ChatMessageResp struct {
 
 type ChatMessageListResp struct {
 	Messages []ChatMessageResp `json:"messages"`
-	Total    int64            `json:"total"`
-	Page     int              `json:"page"`
-	PageSize int              `json:"page_size"`
+	Total    int64             `json:"total"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"page_size"`
 }

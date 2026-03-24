@@ -27,6 +27,8 @@ type AIClient interface {
 	ProcessText(ctx context.Context, prompt string, content string) (string, error)
 	// 上下文文本处理
 	ChatWithContext(ctx context.Context, messages []ChatMessage) (string, error)
+	// 上下文文本流式处理
+	ChatStream(ctx context.Context, message []ChatMessage, onDelta func(string)) error
 	// 全局思维导图 - 分析多个顶节点之间的关联关系
 	BuildGlobalMindMap(ctx context.Context, nodes []GlobalNode) ([]GlobalRelation, error)
 	// 获取当前使用的模型名称
@@ -333,7 +335,7 @@ func (c *OpenAIClient) ChatWithContext(ctx context.Context, messages []ChatMessa
 				Model:       c.chatModel,
 				Messages:    openaiMessages,
 				Temperature: 0.3,
-				MaxTokens:   4000,
+				MaxTokens:   300,
 			},
 		)
 		if err == nil {
@@ -356,4 +358,50 @@ func (c *OpenAIClient) ChatWithContext(ctx context.Context, messages []ChatMessa
 		}
 	}
 	return "", fmt.Errorf("AI处理失败（重试%d次）: %w", maxRetries, lastErr)
+}
+
+func (c *OpenAIClient) ChatStream(
+	ctx context.Context,
+	message []ChatMessage,
+	onDelta func(string),
+) error {
+	var openaiMessage []openai.ChatCompletionMessage
+	for _, m := range message {
+		openaiMessage = append(openaiMessage, openai.ChatCompletionMessage{
+			Role:    m.Role,
+			Content: m.Content,
+		})
+	}
+
+	stream, err := c.chatClient.CreateChatCompletionStream(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model:       c.chatModel,
+			Messages:    openaiMessage,
+			Temperature: 0.3,
+			MaxTokens:   300,
+			Stream:      true,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	for {
+		response, err := stream.Recv()
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return err
+		}
+		if len(response.Choices) > 0 {
+			delta := response.Choices[0].Delta.Content
+			if delta != "" {
+				onDelta(delta)
+			}
+		}
+	}
+	return nil
 }

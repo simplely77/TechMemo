@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"unicode"
 
 	aiclient "techmemo/backend/ai/client"
@@ -20,6 +21,10 @@ type ChatService struct {
 	kpDao     *dao.KnowledgePointDao
 	aiClient  aiclient.AIClient
 	queue     queue.Queue
+}
+
+func (c *ChatService) SetQueue(q queue.Queue) {
+	c.queue = q
 }
 
 // CreateSession 创建聊天会话
@@ -95,7 +100,6 @@ func NewChatService(
 	noteDao *dao.NoteDao,
 	kpDao *dao.KnowledgePointDao,
 	aiClient aiclient.AIClient,
-	q queue.Queue,
 ) *ChatService {
 	return &ChatService{
 		chatDao:   chatDao,
@@ -104,7 +108,6 @@ func NewChatService(
 		noteDao:   noteDao,
 		kpDao:     kpDao,
 		aiClient:  aiClient,
-		queue:     q,
 	}
 }
 
@@ -128,7 +131,7 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID int64, 
 	}
 
 	// 异步向量化用户消息
-	go s.enqueueMessageEmbedding(ctx, userMsg.ID)
+	go s.enqueueMessageEmbedding(context.Background(), userMsg.ID)
 
 	// 构建 RAG 上下文
 	ragMessages, err := s.buildRAGContext(ctx, content, sessionID, userID)
@@ -155,9 +158,60 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID int64, 
 	}
 
 	// 异步向量化 AI 回复
-	go s.enqueueMessageEmbedding(ctx, aiMsg.ID)
+	go s.enqueueMessageEmbedding(context.Background(), aiMsg.ID)
 
 	return aiMsg, nil
+}
+
+func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, userID int64, content string, onDelta func(delta string)) error {
+	ok, err := s.chatDao.CheckSessionBelongsToUser(ctx, sessionID, userID)
+	if err != nil || !ok {
+		return errors.Forbidden
+	}
+
+	userMsg, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
+		SessionID:  sessionID,
+		UserID:     userID,
+		Role:       "user",
+		Content:    content,
+		TokenCount: s.estimateTokens(content),
+	})
+	if err != nil {
+		return errors.InternalErr
+	}
+	go s.enqueueMessageEmbedding(context.Background(), userMsg.ID)
+
+	ragMessages, err := s.buildRAGContext(ctx, content, sessionID, userID)
+	if err != nil {
+		return errors.InternalErr
+	}
+
+	var fullReply strings.Builder
+
+	err = s.aiClient.ChatStream(ctx, ragMessages, func(delta string) {
+		fullReply.WriteString(delta)
+		onDelta(delta)
+	})
+	if err != nil {
+		return errors.InternalErr
+	}
+
+	reply := fullReply.String()
+
+	aiMsg, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
+		SessionID:  sessionID,
+		UserID:     userID,
+		Role:       "assistant",
+		Content:    reply,
+		TokenCount: s.estimateTokens(reply),
+	})
+	if err != nil {
+		return errors.InternalErr
+	}
+
+	go s.enqueueMessageEmbedding(context.Background(), aiMsg.ID)
+
+	return nil
 }
 
 // buildRAGContext 构建 RAG 上下文

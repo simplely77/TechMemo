@@ -91,16 +91,8 @@ func (a *AIService) GetTaskStatus(ctx context.Context, taskID string) (dto.GetTa
 	return dto.GetTaskStatusResp{TaskID: taskID, Status: status}, nil
 }
 
-func (a *AIService) GetQueue() queue.Queue {
-	return a.queue
-}
-
 func (a *AIService) SetQueue(q queue.Queue) {
 	a.queue = q
-}
-
-func (a *AIService) SetAIClient(client aiclient.AIClient) {
-	a.aiClient = client
 }
 
 func (a *AIService) SubmitTask(ctx context.Context, noteID int64) (string, error) {
@@ -169,13 +161,13 @@ func (a *AIService) ProcessTask(ctx context.Context, task queue.AITask) {
 
 		switch logItem.ProcessType {
 		case "classify":
-			go a.handleClassify(ctx, logItem)
+			go a.handleClassify(context.Background(), logItem)
 		case "extract":
-			go a.handleExtract(ctx, logItem)
+			go a.handleExtract(context.Background(), logItem)
 		case "embedding":
-			go a.handleEmbedding(ctx, logItem)
+			go a.handleEmbedding(context.Background(), logItem)
 		case "global_mindmap":
-			go a.handleGlobalMindMap(ctx, logItem)
+			go a.handleGlobalMindMap(context.Background(), logItem)
 		default:
 			a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
 		}
@@ -535,10 +527,11 @@ func generateGlobalTaskID(userID int64) string {
 	return fmt.Sprintf("global:%d:%s", userID, uuid.NewString())
 }
 
-func NewAIService(aiDao *dao.AIDao, noteDao *dao.NoteDao, chatDao *dao.ChatDao) *AIService {
+func NewAIService(aiDao *dao.AIDao, noteDao *dao.NoteDao, chatDao *dao.ChatDao, aiClient aiclient.AIClient) *AIService {
 	return &AIService{
-		aiDao:   aiDao,
-		noteDao: noteDao,
-		chatDao: chatDao,
+		aiDao:    aiDao,
+		noteDao:  noteDao,
+		chatDao:  chatDao,
+		aiClient: aiClient,
 	}
 }
