@@ -131,7 +131,7 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID int64, 
 	}
 
 	// 异步向量化用户消息
-	go s.enqueueMessageEmbedding(context.Background(), userMsg.ID)
+	s.enqueueMessageEmbedding(ctx, userMsg.ID)
 
 	// 构建 RAG 上下文
 	ragMessages, err := s.buildRAGContext(ctx, content, sessionID, userID)
@@ -158,7 +158,7 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID int64, 
 	}
 
 	// 异步向量化 AI 回复
-	go s.enqueueMessageEmbedding(context.Background(), aiMsg.ID)
+	s.enqueueMessageEmbedding(ctx, aiMsg.ID)
 
 	return aiMsg, nil
 }
@@ -179,7 +179,7 @@ func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, us
 	if err != nil {
 		return errors.InternalErr
 	}
-	go s.enqueueMessageEmbedding(context.Background(), userMsg.ID)
+	s.enqueueMessageEmbedding(ctx, userMsg.ID)
 
 	ragMessages, err := s.buildRAGContext(ctx, content, sessionID, userID)
 	if err != nil {
@@ -209,7 +209,7 @@ func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, us
 		return errors.InternalErr
 	}
 
-	go s.enqueueMessageEmbedding(context.Background(), aiMsg.ID)
+	s.enqueueMessageEmbedding(ctx, aiMsg.ID)
 
 	return nil
 }
