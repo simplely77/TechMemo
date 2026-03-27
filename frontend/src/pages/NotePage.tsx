@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getCategories, createCategory, deleteCategory, type Category } from "@/services/categoryService"
 import { getNotes, getNote, createNote, updateNote, deleteNote, updateNoteTags, type Note, type NoteTag } from "@/services/noteService"
-import { getTags, createTag, type Tag } from "@/services/tagService"
+import { getTags, createTag, deleteTag, type Tag } from "@/services/tagService"
 
 type ViewMode = 'view' | 'edit' | 'create'
 
@@ -21,6 +21,10 @@ export default function NotePage() {
     const [editingTagsNoteId, setEditingTagsNoteId] = useState<number | null>(null)
     // 新建标签输入
     const [newTagName, setNewTagName] = useState('')
+    // 标签筛选
+    const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
+    const [showTagForm, setShowTagForm] = useState(false)
+    const [newTagNameInSidebar, setNewTagNameInSidebar] = useState('')
 
     useEffect(() => {
         loadCategories()
@@ -160,6 +164,42 @@ export default function NotePage() {
         } catch (err) { console.error(err) }
     }
 
+    // 在侧边栏创建新标签
+    const handleCreateTagInSidebar = async () => {
+        if (!newTagNameInSidebar.trim()) return
+        try {
+            const tag = await createTag({ name: newTagNameInSidebar })
+            setAllTags(prev => [...prev, tag])
+            setNewTagNameInSidebar('')
+            setShowTagForm(false)
+        } catch (err) { console.error(err) }
+    }
+
+    // 删除标签
+    const handleDeleteTag = async (id: number) => {
+        try {
+            await deleteTag(id)
+            setAllTags(prev => prev.filter(t => t.id !== id))
+            setSelectedTagIds(prev => prev.filter(tid => tid !== id))
+        } catch (err) { console.error(err) }
+    }
+
+    // 切换标签筛选
+    const handleToggleTagFilter = (tagId: number) => {
+        setSelectedTagIds(prev =>
+            prev.includes(tagId)
+                ? prev.filter(id => id !== tagId)
+                : [...prev, tagId]
+        )
+    }
+
+    // 根据选中的标签筛选笔记
+    const filteredNotes = selectedTagIds.length === 0
+        ? notes
+        : notes.filter(note =>
+            note.tags.some(tag => selectedTagIds.includes(tag.id))
+        )
+
     const startEdit = () => {
         if (!selectedNote) return
         setFormData({
@@ -219,6 +259,58 @@ export default function NotePage() {
                     </div>
                 </div>
 
+                {/* 标签区 */}
+                <div className="p-3 border-b">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">标签</span>
+                        <button onClick={() => setShowTagForm(v => !v)} className="text-sm text-primary leading-none">+</button>
+                    </div>
+                    {showTagForm && (
+                        <div className="flex gap-1 mb-2">
+                            <input
+                                className="flex-1 text-xs border rounded px-1.5 py-1"
+                                placeholder="标签名"
+                                value={newTagNameInSidebar}
+                                onChange={e => setNewTagNameInSidebar(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') handleCreateTagInSidebar()
+                                    if (e.key === 'Escape') { setShowTagForm(false); setNewTagNameInSidebar('') }
+                                }}
+                                autoFocus
+                            />
+                            <button onClick={handleCreateTagInSidebar} className="text-xs text-primary">✓</button>
+                            <button onClick={() => { setShowTagForm(false); setNewTagNameInSidebar('') }} className="text-xs text-muted-foreground">✕</button>
+                        </div>
+                    )}
+                    <div className="flex flex-wrap gap-1">
+                        {allTags.map(tag => (
+                            <div
+                                key={tag.id}
+                                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs cursor-pointer group transition-colors ${selectedTagIds.includes(tag.id) ? 'bg-primary text-primary-foreground' : 'bg-accent hover:bg-accent/80'}`}
+                                onClick={() => handleToggleTagFilter(tag.id)}
+                            >
+                                <span className="truncate">{tag.name}</span>
+                                <button
+                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0"
+                                    onClick={e => { e.stopPropagation(); handleDeleteTag(tag.id) }}
+                                >✕</button>
+                            </div>
+                        ))}
+                        {allTags.length === 0 && (
+                            <p className="text-xs text-muted-foreground py-1">暂无标签</p>
+                        )}
+                    </div>
+                    {selectedTagIds.length > 0 && (
+                        <div className="mt-2 flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground">已选 {selectedTagIds.length} 个标签</span>
+                            <button
+                                onClick={() => setSelectedTagIds([])}
+                                className="text-[10px] text-primary"
+                            >清除筛选</button>
+                        </div>
+                    )}
+                </div>
+
                 {/* 笔记列表 */}
                 <div className="flex-1 overflow-y-auto p-3">
                     <div className="flex justify-between items-center mb-2">
@@ -226,7 +318,7 @@ export default function NotePage() {
                         <button onClick={startCreate} className="text-sm text-primary leading-none">+</button>
                     </div>
                     <div className="space-y-1">
-                        {notes.map(note => (
+                        {filteredNotes.map(note => (
                             <div key={note.id} className="relative">
                                 <div
                                     className={`px-2 py-1.5 rounded cursor-pointer group ${selectedNote?.id === note.id ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
@@ -295,6 +387,9 @@ export default function NotePage() {
                                 )}
                             </div>
                         ))}
+                        {filteredNotes.length === 0 && notes.length > 0 && (
+                            <p className="text-xs text-muted-foreground py-2">没有符合筛选条件的笔记</p>
+                        )}
                         {notes.length === 0 && (
                             <p className="text-xs text-muted-foreground py-2">暂无笔记</p>
                         )}

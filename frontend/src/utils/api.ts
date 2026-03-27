@@ -1,6 +1,7 @@
 import request from './request'
 import type { ApiResponse } from '@/types/response'
 import { ApiError } from '@/types/response'
+import { toast } from 'sonner'
 
 /**
  * 处理 API 响应
@@ -11,7 +12,9 @@ const handleResponse = async <T>(promise: Promise<any>): Promise<T> => {
     const { code, message, data } = response.data as ApiResponse<T>
 
     if (code !== 20000) {
-      throw new ApiError(code, message)
+      const errorMsg = message || '请求失败'
+      toast.error(errorMsg)
+      throw new ApiError(code, errorMsg)
     }
 
     return data
@@ -22,10 +25,14 @@ const handleResponse = async <T>(promise: Promise<any>): Promise<T> => {
 
     if (error.response?.data) {
       const { code, message } = error.response.data
-      throw new ApiError(code, message, error)
+      const errorMsg = message || '请求失败'
+      toast.error(errorMsg)
+      throw new ApiError(code, errorMsg, error)
     }
 
-    throw new ApiError(-1, error.message || '请求失败', error)
+    const errorMsg = error.message || '请求失败'
+    toast.error(errorMsg)
+    throw new ApiError(-1, errorMsg, error)
   }
 }
 

@@ -161,13 +161,13 @@ func (a *AIService) ProcessTask(ctx context.Context, task queue.AITask) {
 
 		switch logItem.ProcessType {
 		case "classify":
-			go a.handleClassify(context.Background(), logItem)
+			a.handleClassify(ctx, logItem)
 		case "extract":
-			go a.handleExtract(context.Background(), logItem)
+			a.handleExtract(ctx, logItem)
 		case "embedding":
-			go a.handleEmbedding(context.Background(), logItem)
+			a.handleEmbedding(ctx, logItem)
 		case "global_mindmap":
-			go a.handleGlobalMindMap(context.Background(), logItem)
+			a.handleGlobalMindMap(ctx, logItem)
 		default:
 			a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
 		}
