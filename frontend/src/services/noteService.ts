@@ -2,31 +2,45 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api'
 
 // ============ 类型定义 ============
 
+export interface NoteTag {
+  id: number
+  name: string
+}
+
+export interface NoteCategory {
+  id: number
+  name: string
+}
+
 export interface Note {
   id: number
   title: string
-  content: string
-  category_id?: number
+  content_md: string
+  note_type?: string
+  category: NoteCategory
+  tags: NoteTag[]
   status: string
-  created_time: string
-  updated_time: string
+  created_at: string
+  updated_at: string
 }
 
 export interface CreateNoteRequest {
   title: string
-  content: string
-  category_id?: number
+  content_md: string
+  category_id: number
+  tag_ids?: number[]
 }
 
 export interface UpdateNoteRequest {
   title?: string
-  content?: string
+  content_md?: string
   category_id?: number
 }
 
 export interface NoteVersion {
-  version_id: number
-  content: string
+  id:number
+  note_id: number
+  content_md: string
   created_time: string
 }
 
@@ -41,7 +55,7 @@ export interface GetNotesQuery {
 }
 
 export interface GetNotesResponse {
-  notes: Note[]
+  notes?: Note[]
   total: number
   page: number
   page_size: number

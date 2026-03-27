@@ -17,8 +17,15 @@ export interface UpdateTagRequest {
   description?: string
 }
 
+export interface GetTagsResponse {
+  tags: Tag[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export const getTags = () => {
-  return apiGet<Tag[]>('/tags')
+  return apiGet<GetTagsResponse>('/tags')
 }
 
 export const createTag = (data: CreateTagRequest) => {

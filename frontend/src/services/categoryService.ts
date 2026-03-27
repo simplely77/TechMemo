@@ -22,8 +22,13 @@ export const getCategories = () => {
   return apiGet<GetCategoriesResp>('/categories')
 }
 
-export const createCategory = (data: CreateCategoryRequest) => {
-  return apiPost<Category>('/categories', data)
+export interface CreateCategoryResponse {
+  Category: Category
+}
+
+export const createCategory = async (data: CreateCategoryRequest): Promise<Category> => {
+  const res = await apiPost<CreateCategoryResponse>('/categories', data)
+  return res.Category
 }
 
 export const updateCategory = (id: number, data: UpdateCategoryRequest) => {

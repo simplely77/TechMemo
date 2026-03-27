@@ -65,7 +65,7 @@ func HandlerGetTags(tagService *service.TagService) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param data body dto.CreateTagReq true "创建标签参数"
-// @Success 200 {object} response.Response "创建标签成功"
+// @Success 200 {object} response.Response{data=dto.Tag} "创建标签成功"
 // @Router /api/v1/tags [post]
 func HandlerCreateTag(tagService *service.TagService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -86,13 +86,13 @@ func HandlerCreateTag(tagService *service.TagService) gin.HandlerFunc {
 			return
 		}
 
-		err := tagService.CreateTag(c.Request.Context(), userID, req.Name)
+		tag, err := tagService.CreateTag(c.Request.Context(), userID, req.Name)
 		if err != nil {
 			response.FailErr(c, err)
 			return
 		}
 
-		response.Success(c, nil)
+		response.Success(c, tag)
 	}
 }
 

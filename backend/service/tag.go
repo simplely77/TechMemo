@@ -45,14 +45,14 @@ func (t *TagService) UpdateTag(ctx context.Context, userID int64, id int64, name
 	return nil
 }
 
-func (t *TagService) CreateTag(ctx context.Context, userID int64, name string) error {
+func (t *TagService) CreateTag(ctx context.Context, userID int64, name string) (*dto.Tag, error) {
 	exists, err := t.tagDao.CheckTagExists(ctx, userID, name)
 	if err != nil {
-		return errors.InternalErr
+		return nil, errors.InternalErr
 	}
 
 	if exists {
-		return errors.TagExists
+		return nil, errors.TagExists
 	}
 
 	tag := &model.Tag{
@@ -62,10 +62,10 @@ func (t *TagService) CreateTag(ctx context.Context, userID int64, name string) e
 
 	err = t.tagDao.CreateTag(ctx, tag)
 	if err != nil {
-		return errors.InternalErr
+		return nil, errors.InternalErr
 	}
 
-	return nil
+	return &dto.Tag{ID: tag.ID, Name: tag.Name, UserID: tag.UserID}, nil
 }
 
 func (t *TagService) GetTags(ctx context.Context, userID int64, keyword string, page int64, size int64) (*dto.GetTagsResp, error) {

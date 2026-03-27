@@ -16,8 +16,8 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - /Users/liyi/Documents/TechMemo/sql/data:/var/lib/postgresql/data
-      - /Users/liyi/Documents/TechMemo/sql:/docker-entrypoint-initdb.d
+      - /Users/liyi/ejoy/school/TechMemo/sql/data:/var/lib/postgresql/data
+      - /Users/liyi/ejoy/school/TechMemo/sql:/docker-entrypoint-initdb.d
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -34,7 +34,7 @@ services:
     ports:
       - 6379:6379
     volumes:
-      - /Users/liyi/Documents/TechMemo/sql/redis-data:/data
+      - /Users/liyi/ejoy/school/TechMemo/sql/redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 1s

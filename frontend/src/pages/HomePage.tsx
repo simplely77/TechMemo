@@ -1,11 +1,30 @@
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { getStatsOverview, type StatsOverview } from '@/services/statsService'
 
 export default function HomePage() {
   const { user, clearAuth } = useAuthStore()
   const navigate = useNavigate()
+  const [stats, setStats] = useState<StatsOverview | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadStats()
+  }, [])
+
+  const loadStats = async () => {
+    try {
+      const res = await getStatsOverview()
+      setStats(res)
+    } catch (err) {
+      console.error("Failed to load stats", err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleLogout = () => {
     clearAuth()
@@ -74,12 +93,48 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto">
           {/* Welcome Section */}
           <div className="mb-12 text-center">
-            <h2 className="text-4xl font-bold mb-3 bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-              欢迎来到
+            <h2 className="text-4xl font-bold mb-3 bg-linear-to-r from-white to-zinc-400 bg-clip-text text-transparent">
+              欢迎来到 TechMemo
             </h2>
             <p className="text-muted-foreground text-lg">
               你的个人技术知识库
             </p>
+          </div>
+
+          {/* Quick Stats - 放在功能卡片前面 */}
+          <div className="mb-12 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription className="text-xs">笔记总数</CardDescription>
+                <CardTitle className="text-2xl">
+                  {loading ? '--' : stats?.total_notes || 0}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription className="text-xs">知识点</CardDescription>
+                <CardTitle className="text-2xl">
+                  {loading ? '--' : stats?.total_knowledge_point || 0}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription className="text-xs">分类</CardDescription>
+                <CardTitle className="text-2xl">
+                  {loading ? '--' : stats?.total_categories || 0}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription className="text-xs">标签</CardDescription>
+                <CardTitle className="text-2xl">
+                  {loading ? '--' : stats?.total_tags || 0}
+                </CardTitle>
+              </CardHeader>
+            </Card>
           </div>
 
           {/* Feature Grid */}
@@ -104,34 +159,6 @@ export default function HomePage() {
                 </CardContent>
               </Card>
             ))}
-          </div>
-
-          {/* Quick Stats */}
-          <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs">笔记总数</CardDescription>
-                <CardTitle className="text-2xl">--</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs">知识点</CardDescription>
-                <CardTitle className="text-2xl">--</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs">分类</CardDescription>
-                <CardTitle className="text-2xl">--</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs">标签</CardDescription>
-                <CardTitle className="text-2xl">--</CardTitle>
-              </CardHeader>
-            </Card>
           </div>
         </div>
       </main>

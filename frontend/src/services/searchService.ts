@@ -22,7 +22,3 @@ export interface SemanticSearchResponse {
 export const semanticSearch = (data: SemanticSearchRequest) => {
   return apiPost<SemanticSearchResponse>('/search/semantic', data)
 }
-
-export const askQuestion = (question: string) => {
-  return apiPost<any>('/qa/ask', { question })
-}
