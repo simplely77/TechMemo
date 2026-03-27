@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { getCategories, createCategory, deleteCategory, type Category } from "@/services/categoryService"
 import { getNotes, getNote, createNote, updateNote, deleteNote, updateNoteTags, type Note, type NoteTag } from "@/services/noteService"
 import { getTags, createTag, deleteTag, type Tag } from "@/services/tagService"
+import { processNoteAI, getNoteAIStatus } from "@/services/aiService"
 
 type ViewMode = 'view' | 'edit' | 'create'
 
@@ -25,6 +26,8 @@ export default function NotePage() {
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
     const [showTagForm, setShowTagForm] = useState(false)
     const [newTagNameInSidebar, setNewTagNameInSidebar] = useState('')
+    // AI 处理状态
+    const [aiProcessing, setAiProcessing] = useState(false)
 
     useEffect(() => {
         loadCategories()
@@ -191,6 +194,21 @@ export default function NotePage() {
                 ? prev.filter(id => id !== tagId)
                 : [...prev, tagId]
         )
+    }
+
+    // AI 处理笔记
+    const handleProcessAI = async () => {
+        if (!selectedNote) return
+        setAiProcessing(true)
+        try {
+            await processNoteAI(selectedNote.id)
+            alert('AI 处理已开始，请稍后查看结果')
+        } catch (err) {
+            console.error(err)
+            alert('AI 处理失败')
+        } finally {
+            setAiProcessing(false)
+        }
     }
 
     // 根据选中的标签筛选笔记
@@ -466,6 +484,9 @@ export default function NotePage() {
                             </div>
                             <div className="flex gap-2">
                                 <Button size="sm" onClick={startEdit}>编辑</Button>
+                                <Button size="sm" variant="outline" onClick={handleProcessAI} disabled={aiProcessing}>
+                                    {aiProcessing ? '处理中...' : '🤖 AI 分析'}
+                                </Button>
                                 <Button size="sm" variant="destructive" onClick={handleDeleteNote}>删除</Button>
                             </div>
                         </CardContent>

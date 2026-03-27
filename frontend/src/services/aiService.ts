@@ -19,19 +19,35 @@ export interface GetTaskStatusResp {
 }
 
 export interface MindMapNode {
-  id: string
-  title: string
-  children?: MindMapNode[]
+  id: number
+  name: string
+  description: string
+  importance_score: number
+  children: MindMapNode[]
 }
 
 export interface GetMindMapResp {
   note_id: number
-  root: MindMapNode
+  nodes: MindMapNode[]
+}
+
+export interface GlobalMindMapNode {
+  id: number
+  note_id: number
+  name: string
+  description: string
+  importance_score: number
+}
+
+export interface GlobalMindMapEdge {
+  from: number
+  to: number
+  label: string
 }
 
 export interface GetGlobalMindMapResp {
-  nodes: MindMapNode[]
-  edges: Array<{ source: string; target: string }>
+  nodes: GlobalMindMapNode[]
+  edges: GlobalMindMapEdge[]
 }
 
 export const processNoteAI = (noteId: number) => {

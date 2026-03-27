@@ -20,7 +20,7 @@ export default function KnowledgePage() {
     setLoading(true)
     getKnowledgePoints()
       .then(res => {
-        const points = Array.isArray(res) ? res : []
+        const points = res.knowledge_points || []
         setKnowledgePoints(points)
       })
       .catch(err => console.error("Failed to fetch knowledge points", err))
@@ -29,8 +29,8 @@ export default function KnowledgePage() {
 
   const handleSelectPoint = (point: KnowledgePoint) => {
     setSelectedPoint(point)
-    setEditContent(point.content)
-    setEditCategory(point.category || "")
+    setEditContent(point.description)
+    setEditCategory(point.name)
     setIsEditing(false)
   }
 
@@ -38,8 +38,8 @@ export default function KnowledgePage() {
     if (!selectedPoint) return
     try {
       const updated = await updateKnowledgePoint(selectedPoint.id, {
-        content: editContent,
-        category: editCategory
+        name: editCategory,
+        description: editContent
       })
       setKnowledgePoints(
         knowledgePoints.map(p => p.id === selectedPoint.id ? updated : p)
@@ -93,9 +93,9 @@ export default function KnowledgePage() {
                         }`}
                         onClick={() => handleSelectPoint(point)}
                       >
-                        <p className="font-semibold truncate line-clamp-2">{point.content}</p>
-                        {point.category && (
-                          <p className="text-xs opacity-70">{point.category}</p>
+                        <p className="font-semibold truncate line-clamp-2">{point.name}</p>
+                        {point.source_note_title && (
+                          <p className="text-xs opacity-70">来源: {point.source_note_title}</p>
                         )}
                       </li>
                     ))}
@@ -119,12 +119,13 @@ export default function KnowledgePage() {
                     <>
                       <input
                         type="text"
-                        placeholder="分类"
+                        placeholder="知识点名称"
                         value={editCategory}
                         onChange={(e) => setEditCategory(e.target.value)}
                         className="mb-3 px-3 py-2 border rounded"
                       />
                       <textarea
+                        placeholder="知识点描述"
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
                         className="flex-1 px-3 py-2 border rounded mb-3 resize-none"
@@ -144,16 +145,19 @@ export default function KnowledgePage() {
                     </>
                   ) : (
                     <>
-                      {selectedPoint.category && (
-                        <p className="text-sm text-muted-foreground mb-2">
-                          分类: {selectedPoint.category}
+                      <div className="mb-4">
+                        <h3 className="text-lg font-semibold mb-2">{selectedPoint.name}</h3>
+                        {selectedPoint.source_note_title && (
+                          <p className="text-sm text-muted-foreground mb-1">
+                            来源笔记: {selectedPoint.source_note_title}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          创建于 {new Date(selectedPoint.created_at).toLocaleString()}
                         </p>
-                      )}
-                      <p className="text-sm text-muted-foreground mb-4">
-                        创建于 {new Date(selectedPoint.created_time).toLocaleString()}
-                      </p>
+                      </div>
                       <p className="flex-1 whitespace-pre-wrap text-sm mb-4">
-                        {selectedPoint.content}
+                        {selectedPoint.description}
                       </p>
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => setIsEditing(true)}>

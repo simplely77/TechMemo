@@ -2,23 +2,54 @@ import { apiGet, apiPut, apiDelete } from '@/utils/api'
 
 export interface KnowledgePoint {
   id: number
-  note_id: number
-  content: string
-  category?: string
-  created_time: string
+  name: string
+  description: string
+  source_note_id: number
+  source_note_title?: string
+  importance_score: number
+  created_at: string
+}
+
+export interface GetKnowledgePointsResponse {
+  knowledge_points: KnowledgePoint[]
+  total: number
+  page: number
+  page_size: number
 }
 
 export interface UpdateKnowledgePointRequest {
-  content?: string
-  category?: string
+  name?: string
+  description?: string
+  importance_score?: number
 }
 
-export const getKnowledgePoints = () => {
-  return apiGet<KnowledgePoint[]>('/knowledge-points')
+export const getKnowledgePoints = (params?: {
+  source_note_id?: number
+  keyword?: string
+  min_importance?: number
+  page?: number
+  page_size?: number
+}) => {
+  return apiGet<GetKnowledgePointsResponse>('/knowledge-points', { params })
+}
+
+export interface GetKnowledgePointResponse {
+  id: number
+  name: string
+  description: string
+  source_note_id: number
+  source_note_title?: string
+  importance_score: number
+  created_at: string
+  related_points?: Array<{
+    id: number
+    name: string
+    relation_type: string
+  }>
 }
 
 export const getKnowledgePoint = (id: number) => {
-  return apiGet<KnowledgePoint>(`/knowledge-points/${id}`)
+  return apiGet<GetKnowledgePointResponse>(`/knowledge-points/${id}`)
 }
 
 export const updateKnowledgePoint = (id: number, data: UpdateKnowledgePointRequest) => {
