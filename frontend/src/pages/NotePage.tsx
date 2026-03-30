@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getCategories, createCategory, deleteCategory, type Category } from "@/services/categoryService"
 import { getNotes, getNote, createNote, updateNote, deleteNote, updateNoteTags, type Note, type NoteTag } from "@/services/noteService"
 import { getTags, createTag, deleteTag, type Tag } from "@/services/tagService"
 import { processNoteAI, getNoteAIStatus } from "@/services/aiService"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import remarkBreaks from 'remark-breaks'
+import rehypeKatex from 'rehype-katex'
+import rehypeHighlight from 'rehype-highlight'
+import rehypeSlug from 'rehype-slug'
+import rehypeAutolinkHeadings from 'rehype-autolink-headings'
+import rehypeRaw from 'rehype-raw'
+import 'katex/dist/katex.min.css'
+import 'highlight.js/styles/github-dark.css'
 
-type ViewMode = 'view' | 'edit' | 'create'
+type ViewMode = 'view' | 'edit'
 
 export default function NotePage() {
     const [categories, setCategories] = useState<Category[]>([])
@@ -15,11 +25,16 @@ export default function NotePage() {
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
     const [selectedNote, setSelectedNote] = useState<Note | null>(null)
     const [viewMode, setViewMode] = useState<ViewMode>('view')
-    const [formData, setFormData] = useState({ title: '', content: '', tagIds: [] as number[] })
+    const [editingContent, setEditingContent] = useState('')
     const [newCategoryName, setNewCategoryName] = useState('')
     const [showCategoryForm, setShowCategoryForm] = useState(false)
+    const [newNoteName, setNewNoteName] = useState('')
+    const [showNoteForm, setShowNoteForm] = useState(false)
     // 笔记列表中正在编辑标签的笔记 id
     const [editingTagsNoteId, setEditingTagsNoteId] = useState<number | null>(null)
+    // 笔记列表中正在重命名的笔记 id
+    const [renamingNoteId, setRenamingNoteId] = useState<number | null>(null)
+    const [renamingTitle, setRenamingTitle] = useState('')
     // 新建标签输入
     const [newTagName, setNewTagName] = useState('')
     // 标签筛选
@@ -28,6 +43,7 @@ export default function NotePage() {
     const [newTagNameInSidebar, setNewTagNameInSidebar] = useState('')
     // AI 处理状态
     const [aiProcessing, setAiProcessing] = useState(false)
+    const [aiStatus, setAiStatus] = useState<string>('')
 
     useEffect(() => {
         loadCategories()
@@ -37,6 +53,54 @@ export default function NotePage() {
     useEffect(() => {
         if (selectedCategoryId) loadNotes(selectedCategoryId)
     }, [selectedCategoryId])
+
+    // 轮询 AI 处理状态
+    useEffect(() => {
+        if (!selectedNote || !aiProcessing) return
+
+        const pollStatus = async () => {
+            try {
+                const status = await getNoteAIStatus(selectedNote.id)
+                setAiStatus(status.status || '')
+
+                // 如果处理完成，停止轮询
+                if (status.status === 'completed' || status.status === 'failed') {
+                    setAiProcessing(false)
+                    if (status.status === 'completed') {
+                        alert('AI 处理完成')
+                    } else {
+                        alert('AI 处理失败')
+                    }
+                }
+            } catch (err) {
+                console.error(err)
+            }
+        }
+
+        const interval = setInterval(pollStatus, 2000) // 每2秒轮询一次
+        return () => clearInterval(interval)
+    }, [selectedNote, aiProcessing])
+
+    // 键盘快捷键：保存
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Cmd/Ctrl + S: 保存
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault()
+                if (viewMode === 'edit') {
+                    handleUpdateNote()
+                }
+            }
+            // Escape: 退出编辑模式并保存
+            if (e.key === 'Escape' && viewMode === 'edit') {
+                e.preventDefault()
+                handleClickOutside()
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [viewMode, editingContent, selectedNote])
 
     const loadCategories = async () => {
         try {
@@ -67,27 +131,36 @@ export default function NotePage() {
     }
 
     const handleSelectNote = async (note: Note) => {
+        // 如果正在编辑且有未保存的内容，先保存
+        if (viewMode === 'edit' && selectedNote && editingContent !== selectedNote.content_md) {
+            await handleUpdateNote()
+        }
+
         try {
             const full = await getNote(note.id)
             setSelectedNote(full)
             setViewMode('view')
             setEditingTagsNoteId(null)
+            setEditingContent('')
         } catch (err) { console.error(err) }
     }
 
     const handleCreateNote = async () => {
-        if (!formData.title.trim() || !formData.content.trim() || !selectedCategoryId) return
+        if (!newNoteName.trim() || !selectedCategoryId) return
         try {
             const note = await createNote({
-                title: formData.title,
-                content_md: formData.content,
+                title: newNoteName,
+                content_md: '',
                 category_id: selectedCategoryId,
-                tag_ids: formData.tagIds
+                tag_ids: []
             })
             setNotes(prev => [note, ...prev])
             setSelectedNote(note)
-            setViewMode('view')
-            setFormData({ title: '', content: '', tagIds: [] })
+            setNewNoteName('')
+            setShowNoteForm(false)
+            // 自动进入编辑模式
+            setEditingContent('')
+            setViewMode('edit')
         } catch (err) { console.error(err) }
     }
 
@@ -95,18 +168,36 @@ export default function NotePage() {
         if (!selectedNote) return
         try {
             const updated = await updateNote(selectedNote.id, {
-                title: formData.title,
-                content_md: formData.content
+                title: selectedNote.title,
+                content_md: editingContent
             })
-            await updateNoteTags(selectedNote.id, formData.tagIds)
-            // 合并 tags（updateNote 返回的对象可能没有 tags，手动补上）
             const updatedWithTags = {
                 ...updated,
-                tags: allTags.filter(t => formData.tagIds.includes(t.id)) as NoteTag[]
+                tags: selectedNote.tags
             }
             setNotes(prev => prev.map(n => n.id === updated.id ? updatedWithTags : n))
             setSelectedNote(updatedWithTags)
             setViewMode('view')
+        } catch (err) { console.error(err) }
+    }
+
+    const handleRenameNote = async (note: Note, newTitle: string) => {
+        if (!newTitle.trim()) return
+        try {
+            const updated = await updateNote(note.id, {
+                title: newTitle,
+                content_md: note.content_md
+            })
+            const updatedWithTags = {
+                ...updated,
+                tags: note.tags
+            }
+            setNotes(prev => prev.map(n => n.id === note.id ? updatedWithTags : n))
+            if (selectedNote?.id === note.id) {
+                setSelectedNote(updatedWithTags)
+            }
+            setRenamingNoteId(null)
+            setRenamingTitle('')
         } catch (err) { console.error(err) }
     }
 
@@ -200,14 +291,14 @@ export default function NotePage() {
     const handleProcessAI = async () => {
         if (!selectedNote) return
         setAiProcessing(true)
+        setAiStatus('processing')
         try {
             await processNoteAI(selectedNote.id)
-            alert('AI 处理已开始，请稍后查看结果')
         } catch (err) {
             console.error(err)
             alert('AI 处理失败')
-        } finally {
             setAiProcessing(false)
+            setAiStatus('')
         }
     }
 
@@ -220,23 +311,24 @@ export default function NotePage() {
 
     const startEdit = () => {
         if (!selectedNote) return
-        setFormData({
-            title: selectedNote.title,
-            content: selectedNote.content_md,
-            tagIds: selectedNote.tags.map(t => t.id)
-        })
+        setEditingContent(selectedNote.content_md)
         setViewMode('edit')
     }
 
-    const startCreate = () => {
-        setFormData({ title: '', content: '', tagIds: [] })
-        setViewMode('create')
+    // 点击底部信息栏时，如果在编辑模式则保存退出
+    const handleClickOutside = async () => {
+        if (viewMode !== 'edit') return
+        if (selectedNote && editingContent !== selectedNote.content_md) {
+            await handleUpdateNote()
+        } else {
+            setViewMode('view')
+        }
     }
 
     return (
-        <div className="flex h-screen">
+        <div className="flex h-screen overflow-hidden">
             {/* 左侧边栏 */}
-            <div className="w-64 border-r flex flex-col">
+            <div className="w-64 min-w-[256px] border-r flex flex-col bg-background">
                 {/* 分类区 */}
                 <div className="p-3 border-b">
                     <div className="flex justify-between items-center mb-2">
@@ -304,7 +396,7 @@ export default function NotePage() {
                         {allTags.map(tag => (
                             <div
                                 key={tag.id}
-                                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs cursor-pointer group transition-colors ${selectedTagIds.includes(tag.id) ? 'bg-primary text-primary-foreground' : 'bg-accent hover:bg-accent/80'}`}
+                                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs cursor-pointer group transition-colors ${selectedTagIds.includes(tag.id) ? 'bg-primary text-primary-foreground' : 'bg-accent hover:bg-accent/60'}`}
                                 onClick={() => handleToggleTagFilter(tag.id)}
                             >
                                 <span className="truncate">{tag.name}</span>
@@ -333,46 +425,112 @@ export default function NotePage() {
                 <div className="flex-1 overflow-y-auto p-3">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">笔记</span>
-                        <button onClick={startCreate} className="text-sm text-primary leading-none">+</button>
+                        <button onClick={() => setShowNoteForm(v => !v)} className="text-sm text-primary leading-none">+</button>
                     </div>
+                    {showNoteForm && (
+                        <div className="flex gap-1 mb-2">
+                            <input
+                                className="flex-1 text-xs border rounded px-1.5 py-1"
+                                placeholder="笔记标题"
+                                value={newNoteName}
+                                onChange={e => setNewNoteName(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') handleCreateNote()
+                                    if (e.key === 'Escape') { setShowNoteForm(false); setNewNoteName('') }
+                                }}
+                                autoFocus
+                            />
+                            <button onClick={handleCreateNote} className="text-xs text-primary">✓</button>
+                            <button onClick={() => { setShowNoteForm(false); setNewNoteName('') }} className="text-xs text-muted-foreground">✕</button>
+                        </div>
+                    )}
                     <div className="space-y-1">
                         {filteredNotes.map(note => (
                             <div key={note.id} className="relative">
-                                <div
-                                    className={`px-2 py-1.5 rounded cursor-pointer group ${selectedNote?.id === note.id ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
-                                    onClick={() => handleSelectNote(note)}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs truncate flex-1">{note.title}</span>
-                                        <button
-                                            className="opacity-0 group-hover:opacity-100 text-xs shrink-0 ml-1 px-1"
-                                            onClick={e => {
-                                                e.stopPropagation()
-                                                setEditingTagsNoteId(editingTagsNoteId === note.id ? null : note.id)
+                                {renamingNoteId === note.id ? (
+                                    <div className="flex gap-1 px-2 py-1.5">
+                                        <input
+                                            className="flex-1 text-xs border rounded px-1.5 py-0.5"
+                                            value={renamingTitle}
+                                            onChange={e => setRenamingTitle(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') handleRenameNote(note, renamingTitle)
+                                                if (e.key === 'Escape') { setRenamingNoteId(null); setRenamingTitle('') }
                                             }}
-                                            title="编辑标签"
-                                        >
-                                            🏷
-                                        </button>
+                                            autoFocus
+                                        />
+                                        <button onClick={() => handleRenameNote(note, renamingTitle)} className="text-xs text-primary">✓</button>
+                                        <button onClick={() => { setRenamingNoteId(null); setRenamingTitle('') }} className="text-xs text-muted-foreground">✕</button>
                                     </div>
-                                    {/* 标签展示（最多2个） */}
-                                    {note.tags.length > 0 && (
-                                        <div className="flex gap-1 mt-1 flex-wrap">
-                                            {note.tags.slice(0, 2).map(tag => (
-                                                <span
-                                                    key={tag.id}
-                                                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedNote?.id === note.id ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-accent text-muted-foreground'}`}
+                                ) : (
+                                    <div
+                                        className={`px-2 py-1.5 rounded cursor-pointer group ${selectedNote?.id === note.id ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
+                                        onClick={() => handleSelectNote(note)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs truncate flex-1">{note.title}</span>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0 px-1"
+                                                    onClick={e => {
+                                                        e.stopPropagation()
+                                                        setRenamingNoteId(note.id)
+                                                        setRenamingTitle(note.title)
+                                                    }}
+                                                    title="重命名"
                                                 >
-                                                    {tag.name}
-                                                </span>
-                                            ))}
-                                            {note.tags.length > 2 && (
-                                                <span className="text-[10px] text-muted-foreground">+{note.tags.length - 2}</span>
-                                            )}
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0 px-1"
+                                                    onClick={e => {
+                                                        e.stopPropagation()
+                                                        setEditingTagsNoteId(editingTagsNoteId === note.id ? null : note.id)
+                                                    }}
+                                                    title="编辑标签"
+                                                >
+                                                    🏷
+                                                </button>
+                                                <button
+                                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0 px-1"
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation()
+                                                        if (confirm('确定删除这篇笔记吗？')) {
+                                                            try {
+                                                                await deleteNote(note.id)
+                                                                setNotes(prev => prev.filter(n => n.id !== note.id))
+                                                                if (selectedNote?.id === note.id) {
+                                                                    setSelectedNote(null)
+                                                                }
+                                                            } catch (err) {
+                                                                console.error(err)
+                                                            }
+                                                        }
+                                                    }}
+                                                    title="删除笔记"
+                                                >
+                                                    🗑
+                                                </button>
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-
+                                        {/* 标签展示（最多2个） */}
+                                        {note.tags.length > 0 && (
+                                            <div className="flex gap-1 mt-1 flex-wrap">
+                                                {note.tags.slice(0, 2).map(tag => (
+                                                    <span
+                                                        key={tag.id}
+                                                        className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedNote?.id === note.id ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-accent text-muted-foreground'}`}
+                                                    >
+                                                        {tag.name}
+                                                    </span>
+                                                ))}
+                                                {note.tags.length > 2 && (
+                                                    <span className="text-[10px] text-muted-foreground">+{note.tags.length - 2}</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 {/* 标签编辑弹出层 */}
                                 {editingTagsNoteId === note.id && (
                                     <div className="absolute left-0 right-0 z-20 mt-1 bg-background border rounded shadow-lg p-2">
@@ -416,81 +574,92 @@ export default function NotePage() {
             </div>
 
             {/* 右侧内容区 */}
-            <div className="flex-1 p-6 overflow-y-auto">
-                {viewMode === 'create' || viewMode === 'edit' ? (
-                    <Card className="h-full flex flex-col">
-                        <CardContent className="flex-1 flex flex-col pt-6 gap-3">
-                            <input
-                                className="border rounded px-3 py-2 text-sm"
-                                placeholder="笔记标题"
-                                value={formData.title}
-                                onChange={e => setFormData(p => ({ ...p, title: e.target.value }))}
-                            />
-                            <textarea
-                                className="flex-1 border rounded px-3 py-2 text-sm resize-none min-h-75"
-                                placeholder="笔记内容（Markdown）"
-                                value={formData.content}
-                                onChange={e => setFormData(p => ({ ...p, content: e.target.value }))}
-                            />
-                            {allTags.length > 0 && (
-                                <div>
-                                    <p className="text-xs text-muted-foreground mb-1">选择标签</p>
-                                    <div className="flex flex-wrap gap-1">
-                                        {allTags.map(tag => (
-                                            <button
-                                                key={tag.id}
-                                                onClick={() => setFormData(p => ({
-                                                    ...p,
-                                                    tagIds: p.tagIds.includes(tag.id)
-                                                        ? p.tagIds.filter(id => id !== tag.id)
-                                                        : [...p.tagIds, tag.id]
-                                                }))}
-                                                className={`text-xs rounded-full px-2 py-0.5 border transition-colors ${formData.tagIds.includes(tag.id) ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-accent'}`}
+            <div className="flex-1 flex flex-col overflow-hidden relative p-6">
+                {selectedNote ? (
+                    <>
+                        {/* 右上角按钮组 - 固定在右侧内容区 */}
+                        <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
+                            {/* 编辑/预览切换按钮 */}
+                            <button
+                                onClick={() => {
+                                    if (viewMode === 'edit') {
+                                        // 从编辑切换到预览，如果有修改则保存
+                                        if (selectedNote && editingContent !== selectedNote.content_md) {
+                                            handleUpdateNote()
+                                        } else {
+                                            setViewMode('view')
+                                        }
+                                    } else {
+                                        // 从预览切换到编辑
+                                        startEdit()
+                                    }
+                                }}
+                                className="p-2 rounded-full bg-background/90 backdrop-blur-sm hover:bg-accent transition-colors shadow-lg border border-border"
+                                title={viewMode === 'edit' ? '预览' : '编辑'}
+                            >
+                                <span className="text-xl">{viewMode === 'edit' ? '👁️' : '✏️'}</span>
+                            </button>
+
+                            {/* AI 分析按钮 */}
+                            <button
+                                onClick={handleProcessAI}
+                                disabled={aiProcessing}
+                                className="p-2 rounded-full bg-background/90 backdrop-blur-sm hover:bg-accent transition-colors disabled:opacity-50 shadow-lg border border-border"
+                                title={aiProcessing ? `AI 处理中: ${aiStatus}` : 'AI 分析'}
+                            >
+                                <span className="text-xl">{aiProcessing ? '⏳' : '💡'}</span>
+                            </button>
+                        </div>
+
+                        <Card className="h-full flex flex-col">
+                            <CardContent className="flex-1 flex flex-col pt-6 overflow-hidden">
+                                {/* 内容区域 */}
+                                {viewMode === 'edit' ? (
+                                    <textarea
+                                        className="flex-1 w-full p-4 border-0 outline-none resize-none bg-transparent"
+                                        value={editingContent}
+                                        onChange={e => setEditingContent(e.target.value)}
+                                        autoFocus
+                                    />
+                                ) : (
+                                    <div className="flex-1 overflow-y-auto mb-4 p-4 prose prose-sm dark:prose-invert max-w-none">
+                                        {selectedNote.content_md ?
+                                            <ReactMarkdown
+                                                remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+                                                rehypePlugins={[
+                                                    rehypeRaw,
+                                                    rehypeKatex,
+                                                    rehypeHighlight,
+                                                    rehypeSlug,
+                                                    [rehypeAutolinkHeadings, { behavior: 'wrap' }]
+                                                ]}
                                             >
-                                                {tag.name}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex gap-2">
-                                <Button size="sm" onClick={viewMode === 'create' ? handleCreateNote : handleUpdateNote}>
-                                    {viewMode === 'create' ? '创建' : '保存'}
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={() => setViewMode('view')}>取消</Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ) : selectedNote ? (
-                    <Card className="h-full flex flex-col">
-                        <CardContent className="flex-1 flex flex-col pt-6 overflow-hidden">
-                            <h2 className="text-lg font-semibold mb-1">{selectedNote.title}</h2>
-                            <div className="flex items-center gap-2 mb-4">
-                                <p className="text-xs text-muted-foreground">
-                                    更新于 {new Date(selectedNote.updated_at).toLocaleString()}
-                                </p>
-                                {selectedNote.tags.length > 0 && (
-                                    <div className="flex gap-1 flex-wrap">
-                                        {selectedNote.tags.map(tag => (
-                                            <span key={tag.id} className="text-xs bg-accent px-2 py-0.5 rounded-full text-muted-foreground">
-                                                {tag.name}
-                                            </span>
-                                        ))}
+                                                {editingContent || selectedNote.content_md}
+                                            </ReactMarkdown> : <div className="text-sm text-muted-foreground italic">
+                                                笔记为空，点击编辑按钮开始编辑
+                                            </div>
+                                        }
                                     </div>
                                 )}
-                            </div>
-                            <div className="flex-1 overflow-y-auto mb-4">
-                                <pre className="whitespace-pre-wrap text-sm font-sans">{selectedNote.content_md}</pre>
-                            </div>
-                            <div className="flex gap-2">
-                                <Button size="sm" onClick={startEdit}>编辑</Button>
-                                <Button size="sm" variant="outline" onClick={handleProcessAI} disabled={aiProcessing}>
-                                    {aiProcessing ? '处理中...' : '🤖 AI 分析'}
-                                </Button>
-                                <Button size="sm" variant="destructive" onClick={handleDeleteNote}>删除</Button>
-                            </div>
-                        </CardContent>
-                    </Card>
+
+                                {/* 底部信息栏 */}
+                                <div className="flex items-center gap-2" onClick={handleClickOutside}>
+                                    <p className="text-xs text-muted-foreground">
+                                        更新于 {new Date(selectedNote.updated_at).toLocaleString()}
+                                    </p>
+                                    {selectedNote.tags.length > 0 && (
+                                        <div className="flex gap-1 flex-wrap">
+                                            {selectedNote.tags.map(tag => (
+                                                <span key={tag.id} className="text-xs bg-accent px-2 py-0.5 rounded-full text-muted-foreground">
+                                                    {tag.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </>
                 ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                         选择一篇笔记，或点击 + 新建

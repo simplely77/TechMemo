@@ -93,7 +93,7 @@ func HandlerCreateCategory(categoryService *service.CategoryService) gin.Handler
 // @Produce json
 // @Param id path int true "分类ID"
 // @Param data body dto.UpdateCategoryReq true "更新分类参数"
-// @Success 200 {object} response.Response "更新分类成功"
+// @Success 200 {object} response.Response{data=dto.Category} "更新分类成功"
 // @Router /api/v1/categories/{id} [put]
 func HandlerUpdateCategory(categoryService *service.CategoryService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -121,12 +121,12 @@ func HandlerUpdateCategory(categoryService *service.CategoryService) gin.Handler
 			return
 		}
 
-		err = categoryService.UpdateCategory(c.Request.Context(), userID, id, req.Name)
+		resp, err := categoryService.UpdateCategory(c.Request.Context(), userID, id, req.Name)
 		if err != nil {
 			response.FailErr(c, err)
 			return
 		}
-		response.Success(c, nil)
+		response.Success(c, resp)
 	}
 }
 

@@ -12,6 +12,13 @@ type TagDao struct {
 	q *query.Query
 }
 
+func (t *TagDao) GetTagByID(ctx context.Context, id int64) (*model.Tag, error) {
+	return t.q.Tag.
+		WithContext(ctx).
+		Where(t.q.Tag.ID.Eq(id)).
+		First()
+}
+
 func (t *TagDao) GetTagsByTagIDsAndUserID(ctx context.Context, tagIDs []int64, userID int64) ([]*model.Tag, error) {
 	if len(tagIDs) == 0 {
 		return []*model.Tag{}, nil

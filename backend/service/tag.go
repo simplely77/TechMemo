@@ -26,23 +26,34 @@ func (t *TagService) DeleteTag(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (t *TagService) UpdateTag(ctx context.Context, userID int64, id int64, name string) error {
+func (t *TagService) UpdateTag(ctx context.Context, userID int64, id int64, name string) (*dto.Tag, error) {
 	exists, err := t.tagDao.CheckTagExists(ctx, userID, name)
 	if err != nil {
-		return errors.InternalErr
+		return nil, errors.InternalErr
 	}
 
 	if exists {
-		return errors.TagExists
+		return nil, errors.TagExists
 	}
 	err = t.tagDao.UpdateTag(ctx, id, name)
 	if err != nil {
 		if stderrors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.TagNotFound
+			return nil, errors.TagNotFound
 		}
-		return errors.InternalErr
+		return nil, errors.InternalErr
 	}
-	return nil
+
+	// 返回更新后的标签
+	tag, err := t.tagDao.GetTagByID(ctx, id)
+	if err != nil {
+		return nil, errors.InternalErr
+	}
+
+	return &dto.Tag{
+		ID:     tag.ID,
+		Name:   tag.Name,
+		UserID: tag.UserID,
+	}, nil
 }
 
 func (t *TagService) CreateTag(ctx context.Context, userID int64, name string) (*dto.Tag, error) {

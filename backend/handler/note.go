@@ -59,7 +59,7 @@ func HandlerGetNotes(noteService *service.NoteService) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param data body dto.CreateNoteReq true "创建笔记参数"
-// @Success 200 {object} response.Response{data=dto.CreateNoteResp} "创建笔记成功"
+// @Success 200 {object} response.Response{data=dto.GetNoteResp} "创建笔记成功"
 // @Router /api/v1/notes [post]
 func HandlerCreateNote(noteService *service.NoteService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -122,7 +122,7 @@ func HandlerGetNote(noteService *service.NoteService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int64 true "笔记ID"
 // @Param body body dto.UpdateNoteReq true "更新笔记请求体"
-// @Success 200 {object} response.Response "更新成功"
+// @Success 200 {object} response.Response{data=dto.GetNoteResp} "更新成功"
 // @Router /api/v1/notes/{id} [put]
 func HandlerUpdateNote(noteService *service.NoteService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -138,13 +138,13 @@ func HandlerUpdateNote(noteService *service.NoteService) gin.HandlerFunc {
 			return
 		}
 
-		err = noteService.UpdateNote(c.Request.Context(), id, &req)
+		resp, err := noteService.UpdateNote(c.Request.Context(), id, &req)
 		if err != nil {
 			response.FailErr(c, err)
 			return
 		}
 
-		response.Success(c, nil)
+		response.Success(c, resp)
 	}
 }
 
@@ -255,7 +255,7 @@ func HandlerGetNoteVersions(noteService *service.NoteService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int64 true "笔记ID"
 // @Param version_id path int64 true "历史版本ID"
-// @Success 200 {object} response.Response "恢复笔记版本成功"
+// @Success 200 {object} response.Response{data=dto.GetNoteResp} "恢复笔记版本成功"
 // @Router /api/v1/notes/{id}/versions/{version_id}/restore [post]
 func HandlerRestoreNote(noteService *service.NoteService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -271,12 +271,12 @@ func HandlerRestoreNote(noteService *service.NoteService) gin.HandlerFunc {
 			response.Fail(c, errors.InvalidParam)
 			return
 		}
-		err = noteService.RestoreNote(c.Request.Context(), id, versionID)
+		resp, err := noteService.RestoreNote(c.Request.Context(), id, versionID)
 		if err != nil {
 			response.FailErr(c, err)
 			return
 		}
 
-		response.Success(c, nil)
+		response.Success(c, resp)
 	}
 }

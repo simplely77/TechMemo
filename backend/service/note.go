@@ -24,23 +24,23 @@ func (n *NoteService) CheckNoteOwnership(ctx context.Context, userID int64, note
 	return note.UserID == userID
 }
 
-func (n *NoteService) RestoreNote(ctx context.Context, id int64, versionID int64) error {
+func (n *NoteService) RestoreNote(ctx context.Context, id int64, versionID int64) (*dto.GetNoteResp, error) {
 	// 判断笔记是否存在
 	exists, err := n.noteDao.CheckNoteExistsByID(ctx, id)
 	if err != nil {
-		return errors.InternalErr
+		return nil, errors.InternalErr
 	}
 	if !exists {
-		return errors.NoteNotFound
+		return nil, errors.NoteNotFound
 	}
 
 	// 判断版本是否存在
 	version, err := n.noteDao.GetNoteVersionByID(ctx, versionID)
 	if err != nil {
-		return errors.InternalErr
+		return nil, errors.InternalErr
 	}
 	if version == nil {
-		return errors.NoteVersionNotFound
+		return nil, errors.NoteVersionNotFound
 	}
 
 	// 事务：更新 note + 新建版本
@@ -66,9 +66,11 @@ func (n *NoteService) RestoreNote(ctx context.Context, id int64, versionID int64
 	})
 
 	if err != nil {
-		return errors.InternalErr
+		return nil, errors.InternalErr
 	}
-	return nil
+
+	// 返回更新后的笔记数据
+	return n.GetNote(ctx, id)
 }
 
 func (n *NoteService) GetNoteVersions(ctx context.Context, id int64, sort string) (*dto.GetNoteVersionsResp, error) {
@@ -157,8 +159,8 @@ func (n *NoteService) UpdateNoteTags(ctx context.Context, userID int64, noteID i
 	})
 }
 
-func (n *NoteService) UpdateNote(ctx context.Context, id int64, req *dto.UpdateNoteReq) error {
-	return n.q.Transaction(func(tx *query.Query) error {
+func (n *NoteService) UpdateNote(ctx context.Context, id int64, req *dto.UpdateNoteReq) (*dto.GetNoteResp, error) {
+	err := n.q.Transaction(func(tx *query.Query) error {
 		noteDao := dao.NewNoteDao(tx)
 
 		exists, err := noteDao.CheckNoteExistsByID(ctx, id)
@@ -169,12 +171,15 @@ func (n *NoteService) UpdateNote(ctx context.Context, id int64, req *dto.UpdateN
 			return errors.NoteNotFound
 		}
 
-		noteVersion := &model.NoteVersion{
-			NoteID:    id,
-			ContentMd: *req.ContentMD,
-		}
-		if err := noteDao.CreateNoteVersion(ctx, noteVersion); err != nil {
-			return errors.InternalErr
+		// 只有当 ContentMD 不为空时才创建版本历史
+		if req.ContentMD != nil {
+			noteVersion := &model.NoteVersion{
+				NoteID:    id,
+				ContentMd: *req.ContentMD,
+			}
+			if err := noteDao.CreateNoteVersion(ctx, noteVersion); err != nil {
+				return errors.InternalErr
+			}
 		}
 
 		if err := noteDao.UpdateNote(ctx, id, dao.UpdateNoteParams{
@@ -187,6 +192,13 @@ func (n *NoteService) UpdateNote(ctx context.Context, id int64, req *dto.UpdateN
 
 		return nil
 	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 返回更新后的笔记数据
+	return n.GetNote(ctx, id)
 }
 
 func (n *NoteService) GetNote(ctx context.Context, id int64) (*dto.GetNoteResp, error) {
@@ -309,7 +321,7 @@ func (n *NoteService) GetNotes(ctx context.Context, req *dto.GetNotesReq, userID
 	}, nil
 }
 
-func (n *NoteService) CreateNoteWithTags(ctx context.Context, req *dto.CreateNoteReq, userID int64) (*dto.CreateNoteResp, error) {
+func (n *NoteService) CreateNoteWithTags(ctx context.Context, req *dto.CreateNoteReq, userID int64) (*dto.GetNoteResp, error) {
 	exists, err := n.categoryDao.CheckCategoryByIDAndUserID(ctx, req.CategoryID, userID)
 	if err != nil {
 		return nil, errors.InternalErr
@@ -369,17 +381,8 @@ func (n *NoteService) CreateNoteWithTags(ctx context.Context, req *dto.CreateNot
 	if err != nil {
 		return nil, err
 	}
-	resp := &dto.CreateNoteResp{
-		ID:         note.ID,
-		Title:      note.Title,
-		ContentMD:  note.ContentMd,
-		NoteType:   note.NoteType,
-		CategoryID: note.CategoryID,
-		Status:     note.Status,
-		CreatedAt:  note.CreatedAt,
-		UpdatedAt:  note.UpdatedAt,
-	}
-	return resp, nil
+
+	return n.GetNote(ctx, note.ID)
 }
 
 func NewNoteService(noteDao *dao.NoteDao, categoryDao *dao.CategoryDao, tagDao *dao.TagDao, q *query.Query) *NoteService {
