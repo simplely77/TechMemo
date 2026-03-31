@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ type AIClient interface {
 	// 上下文文本处理
 	ChatWithContext(ctx context.Context, messages []ChatMessage) (string, error)
 	// 上下文文本流式处理
-	ChatStream(ctx context.Context, message []ChatMessage, onDelta func(string)) error
+	ChatStream(ctx context.Context, message []ChatMessage, onDelta func(string) bool) error
 	// 全局思维导图 - 分析多个顶节点之间的关联关系
 	BuildGlobalMindMap(ctx context.Context, nodes []GlobalNode) ([]GlobalRelation, error)
 	// 获取当前使用的模型名称
@@ -98,6 +99,7 @@ func (c *OpenAIClient) ProcessText(ctx context.Context, prompt string, content s
 			if len(resp.Choices) == 0 {
 				return "", fmt.Errorf("AI返回空结果")
 			}
+			log.Println("大模型返回结果：", resp.Choices[0].Message.Content)
 			return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 		}
 		if !isRetryable(err) {
@@ -150,17 +152,27 @@ func (c *OpenAIClient) ClassifyNoteType(ctx context.Context, content string) (st
 // 知识抽取 - 专注于README中描述的知识点抽取功能
 func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content string) ([]KnowledgePoint, error) {
 	prompt := `
-请从以下技术笔记中抽取知识结构。
+请从技术笔记中抽取知识结构。
 
-要求：
-1. 识别技术概念、机制、算法或工具
-2. 构建层级结构（最多5层）
-3. 每个节点包含：
-   - name
-   - description
-   - importanceScore
-   - children
+【硬性约束（必须严格遵守）】
 
+总节点数 ≤ 20（超过视为失败）
+层级 ≤ 3
+每个节点最多 3 个 children
+description ≤ 20 字
+
+【选择策略（必须执行）】
+如果信息过多：
+
+优先保留抽象概念（如“布局系统”）
+删除具体实现（如“justify-between”）
+删除低重要性节点（importanceScore < 0.7）
+
+【生成要求】
+
+在输出前先规划节点数量
+确保不会超过限制
+只返回完整 JSON
 返回JSON：
 
 {
@@ -179,11 +191,8 @@ func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content strin
   }
 }
 
-注意：
-- 层级不超过5层
-- 节点总数不超过25
-- 不要生成解释
-- 只返回纯JSON,不要Markdown代码块。`
+技术笔记如下：
+`
 
 	result, err := c.ProcessText(ctx, prompt, content)
 	if err != nil {
@@ -363,7 +372,7 @@ func (c *OpenAIClient) ChatWithContext(ctx context.Context, messages []ChatMessa
 func (c *OpenAIClient) ChatStream(
 	ctx context.Context,
 	message []ChatMessage,
-	onDelta func(string),
+	onDelta func(string) bool,
 ) error {
 	var openaiMessage []openai.ChatCompletionMessage
 	for _, m := range message {
@@ -389,6 +398,11 @@ func (c *OpenAIClient) ChatStream(
 	defer stream.Close()
 
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		response, err := stream.Recv()
 		if err != nil {
 			if err.Error() == "EOF" {
@@ -396,11 +410,15 @@ func (c *OpenAIClient) ChatStream(
 			}
 			return err
 		}
-		if len(response.Choices) > 0 {
-			delta := response.Choices[0].Delta.Content
-			if delta != "" {
-				onDelta(delta)
-			}
+		if len(response.Choices) == 0 {
+			continue
+		}
+		delta := response.Choices[0].Delta.Content
+		if delta != "" {
+			continue
+		}
+		if !onDelta(delta) {
+			return nil
 		}
 	}
 	return nil

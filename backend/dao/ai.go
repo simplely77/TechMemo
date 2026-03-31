@@ -14,6 +14,14 @@ type AIDao struct {
 	db *gorm.DB
 }
 
+func (d *AIDao) DeleteAIProcessLogsByNoteID(ctx context.Context, noteID int64) error {
+	_, err := d.q.AiProcessLog.
+		WithContext(ctx).
+		Where(d.q.AiProcessLog.SourceNoteID.Eq(noteID)).
+		Delete()
+	return err
+}
+
 func (d *AIDao) GetKnowledgePointByID(ctx context.Context, id int64) (*model.KnowledgePoint, error) {
 	return d.q.KnowledgePoint.WithContext(ctx).Where(d.q.KnowledgePoint.ID.Eq(id)).First()
 }

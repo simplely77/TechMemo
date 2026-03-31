@@ -163,7 +163,7 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID int64, 
 	return aiMsg, nil
 }
 
-func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, userID int64, content string, onDelta func(delta string)) error {
+func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, userID int64, content string, onDelta func(delta string) bool) error {
 	ok, err := s.chatDao.CheckSessionBelongsToUser(ctx, sessionID, userID)
 	if err != nil || !ok {
 		return errors.Forbidden
@@ -188,9 +188,16 @@ func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, us
 
 	var fullReply strings.Builder
 
-	err = s.aiClient.ChatStream(ctx, ragMessages, func(delta string) {
+	err = s.aiClient.ChatStream(ctx, ragMessages, func(delta string) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+		}
+
 		fullReply.WriteString(delta)
-		onDelta(delta)
+
+		return onDelta(delta) // 由上层决定是否继续
 	})
 	if err != nil {
 		return errors.InternalErr

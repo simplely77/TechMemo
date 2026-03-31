@@ -308,7 +308,7 @@ export default function MindmapPage() {
                             <CardHeader className="pb-3">
                               <div className="flex items-start justify-between gap-2">
                                 <CardTitle className="text-sm font-semibold">{node.name}</CardTitle>
-                                <div className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${node.importance_score >= 0.7
+                                <div className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${node.importance_score >= 0.7
                                   ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                   : node.importance_score >= 0.4
                                     ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'

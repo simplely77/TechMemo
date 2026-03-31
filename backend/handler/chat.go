@@ -2,10 +2,12 @@ package handler
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"techmemo/backend/common/errors"
 	"techmemo/backend/common/response"
@@ -179,7 +181,7 @@ func HandlerSendMessageStream(svc *service.ChatService) gin.HandlerFunc {
 		}
 
 		// 设置 SSE 头
-		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Header().Set("Transfer-Encoding", "chunked")
@@ -192,6 +194,21 @@ func HandlerSendMessageStream(svc *service.ChatService) gin.HandlerFunc {
 
 		ctx := c.Request.Context()
 
+		go func() {
+			ticker := time.NewTicker(20 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					fmt.Fprintf(c.Writer, ": ping\n\n")
+					flusher.Flush()
+				}
+			}
+		}()
+
 		// 用于收集完整回答（后面存数据库）
 		var fullContent strings.Builder
 
@@ -200,26 +217,42 @@ func HandlerSendMessageStream(svc *service.ChatService) gin.HandlerFunc {
 			sessionID,
 			userID,
 			req.Content,
-			func(delta string) {
+			func(delta string) bool {
+				select {
+				case <-ctx.Done():
+					return false
+				default:
+				}
 				// 累积完整回答
 				fullContent.WriteString(delta)
 
 				// SSE 输出
-				fmt.Fprintf(c.Writer, "data: %s\n\n", delta)
+				writeSSE(c.Writer, "", delta)
 				flusher.Flush()
+				return true
 			},
 		)
 
 		if err != nil {
-			fmt.Fprintf(c.Writer, "data: [ERROR] %s\n\n", err.Error())
+			writeSSE(c.Writer, "error", err.Error())
 			flusher.Flush()
 			return
 		}
 
 		// 结束标记
-		fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+		writeSSE(c.Writer, "done", "[DONE]")
 		flusher.Flush()
 	}
+}
+
+func writeSSE(w io.Writer, event, data string) {
+	if event != "" {
+		fmt.Fprintf(w, "event: %s\n", event)
+	}
+	for _, line := range strings.Split(data, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprint(w, "\n")
 }
 
 // @Summary 获取会话消息历史

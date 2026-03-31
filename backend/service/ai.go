@@ -96,6 +96,7 @@ func (a *AIService) SetQueue(q queue.Queue) {
 }
 
 func (a *AIService) cleanNoteAIData(ctx context.Context, noteID int64) {
+	_ = a.aiDao.DeleteAIProcessLogsByNoteID(ctx, noteID)
 	_ = a.aiDao.DeleteEmbeddingsByNoteID(ctx, noteID)
 	_ = a.aiDao.DeleteRelationsByNoteID(ctx, noteID)
 	_ = a.aiDao.DeleteNoteRootNodesByNoteID(ctx, noteID)
