@@ -116,6 +116,13 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+.custom-link {
+  stroke: white!important; /* 柔和蓝色，跟你主题一致 */
+  stroke-width: 0.5;
+  fill: none;
+  opacity: 0.8;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -7,11 +7,12 @@ import {
   sendMessageStream,
   getMessages,
   type CreateSessionResp,
-  type ChatMessageResp
+  type ChatMessageResp,
+  deleteSession
 } from "@/services/chatService"
 
 interface Message extends ChatMessageResp {
-  id: string
+  localId: string
 }
 
 export default function QAPage() {
@@ -56,14 +57,21 @@ export default function QAPage() {
     if (!currentSession) return
     try {
       const res = await getMessages(currentSession.id, 1, 50)
-      setMessages(
-        (res.messages || []).map(msg => ({
-          ...msg,
-          id: msg.id.toString()
-        }))
-      )
+      setMessages(res.messages.map(m => ({ ...m, localId: String(m.id) })))
     } catch (err) {
       console.error("Failed to load messages", err)
+    }
+  }
+
+  const handleDeleteSession = async(id:number)=>{
+    try {
+      await deleteSession(id)
+      if (currentSession?.id===id){
+        setCurrentSession(null)
+      }
+      setSessions(prev => prev.filter(s => s.id !== id))
+    }catch(err){
+      console.error("Failed to delete session",err)
     }
   }
 
@@ -81,12 +89,14 @@ export default function QAPage() {
   const handleSendMessage = async () => {
     if (!input.trim() || !currentSession) return
 
+    const now = Date.now()
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: now,
       session_id: currentSession.id,
       role: "user",
       content: input,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      localId: `user-${now}`
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -100,11 +110,12 @@ export default function QAPage() {
       let assistantContent = ""
 
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: (now + 1),
         session_id: currentSession.id,
         role: "assistant",
         content: "",
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        localId: `assistant-${now + 1}`
       }
 
       setMessages(prev => [...prev, assistantMessage])
@@ -135,30 +146,46 @@ export default function QAPage() {
   }
 
   return (
-    <div className="min-h-screen p-6 flex gap-6">
+    <div className="h-full p-6 flex gap-6 overflow-hidden">
       <div className="max-w-6xl mx-auto w-full flex gap-6">
         {/* 左侧会话列表 */}
         <div className="w-64">
-          <Card className="h-full flex flex-col">
+          <Card className="h-full">
             <CardHeader>
-              <CardTitle className="text-base">会话列表</CardTitle>
+              <CardTitle className="text-xl flex">
+                <p>会话列表</p>
+                <Button size="sm" className="ml-auto" onClick={handleCreateSession}>
+                  +
+                </Button>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col">
-              <Button size="sm" className="mb-4 w-full" onClick={handleCreateSession}>
-                新建会话
-              </Button>
-              <ul className="space-y-2 flex-1 overflow-y-auto">
+            <CardContent className="flex-1 flex flex-col h-full overflow-hidden">
+
+              <ul className="space-y-1 flex-1 overflow-y-auto">
                 {sessions.map(session => (
                   <li
                     key={session.id}
-                    className={`p-2 border rounded cursor-pointer transition-all text-sm truncate ${
-                      currentSession?.id === session.id
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "hover:bg-accent"
-                    }`}
+                    className={`p-2 border flex items-center rounded cursor-pointer transition-all text-sm truncate ${currentSession?.id === session.id
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "hover:bg-accent"
+                      }`}
                     onClick={() => setCurrentSession(session)}
                   >
-                    {session.title || `会话 ${session.id}`}
+                    {/* 左边标题 */}
+                    <span className="truncate flex-1">
+                      {session.title || `会话 ${session.id}`}
+                    </span>
+
+                    {/* 右边删除按钮 */}
+                    <button
+                      className="text-xs opacity-60 hover:opacity-100 ml-auto mr-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSession(session.id);
+                      }}
+                    >
+                      ✕
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -179,15 +206,14 @@ export default function QAPage() {
               ) : (
                 messages.map(msg => (
                   <div
-                    key={msg.id}
+                    key={msg.localId}
                     className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        msg.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
-                      }`}
+                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${msg.role === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                        }`}
                     >
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       <p className="text-xs opacity-70 mt-1">

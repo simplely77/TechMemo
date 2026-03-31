@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   getKnowledgePoints,
-  updateKnowledgePoint,
   deleteKnowledgePoint,
   type KnowledgePoint
 } from "@/services/knowledgeService"
@@ -12,9 +11,6 @@ export default function KnowledgePage() {
   const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPoint, setSelectedPoint] = useState<KnowledgePoint | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editContent, setEditContent] = useState("")
-  const [editCategory, setEditCategory] = useState("")
 
   useEffect(() => {
     setLoading(true)
@@ -29,26 +25,6 @@ export default function KnowledgePage() {
 
   const handleSelectPoint = (point: KnowledgePoint) => {
     setSelectedPoint(point)
-    setEditContent(point.description)
-    setEditCategory(point.name)
-    setIsEditing(false)
-  }
-
-  const handleUpdatePoint = async () => {
-    if (!selectedPoint) return
-    try {
-      const updated = await updateKnowledgePoint(selectedPoint.id, {
-        name: editCategory,
-        description: editContent
-      })
-      setKnowledgePoints(
-        knowledgePoints.map(p => p.id === selectedPoint.id ? updated : p)
-      )
-      setSelectedPoint(updated)
-      setIsEditing(false)
-    } catch (err) {
-      console.error("Failed to update knowledge point", err)
-    }
   }
 
   const handleDeletePoint = async () => {
@@ -65,7 +41,7 @@ export default function KnowledgePage() {
   return (
     <div className="h-screen overflow-hidden p-6 box-border">
       <div className="max-w-6xl mx-auto h-full flex flex-col">
-        <div className="flex justify-between items-center mb-6 flex-shrink-0">
+        <div className="flex justify-between items-center mb-6 shrink-0">
           <h1 className="text-3xl font-bold">知识点库</h1>
         </div>
 
@@ -73,7 +49,7 @@ export default function KnowledgePage() {
           {/* 左侧列表 */}
           <div className="lg:col-span-1 min-h-0 overflow-hidden">
             <Card className="h-full flex flex-col overflow-hidden">
-              <CardHeader className="flex-shrink-0">
+              <CardHeader className="shrink-0">
                 <CardTitle className="text-lg">知识点列表</CardTitle>
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto">

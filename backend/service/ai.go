@@ -348,7 +348,7 @@ func (a *AIService) handleEmbedding(ctx context.Context, logItem *model.AiProces
 			log.Printf("获取笔记失败: %v", err)
 			return
 		}
-		text = note.ContentMd
+		text = note.Title + "\n" + note.ContentMd
 	case "knowledge":
 		kp, err := a.aiDao.GetKnowledgePointByID(ctx, logItem.TargetID)
 		if err != nil {

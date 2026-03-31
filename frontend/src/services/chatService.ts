@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '@/utils/api'
+import { apiDelete, apiGet, apiPost } from '@/utils/api'
 
 // ============ 类型定义 ============
 
@@ -61,7 +61,7 @@ export const getSessions = (page: number = 1, pageSize: number = 10) => {
  * 删除会话
  */
 export const deleteSession = (id: number) => {
-  return apiPost<void>(`/chat/sessions/${id}`, {}, { method: 'DELETE' })
+  return apiDelete<void>(`/chat/sessions/${id}`)
 }
 
 /**

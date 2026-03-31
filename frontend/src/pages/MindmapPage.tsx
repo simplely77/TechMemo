@@ -49,7 +49,6 @@ export default function MindmapPage() {
     setHoveredNode(null)
     try {
       const res = await getMindMap(note.id)
-      console.log("思维导图数据:", res)
       setMindmapNodes(res.nodes || [])
     } catch (err) {
       console.error("Failed to load mindmap", err)
@@ -63,7 +62,6 @@ export default function MindmapPage() {
     setHoveredNode(null)
     try {
       const res = await getGlobalMindMap()
-      console.log("全局思维导图数据:", res)
       setGlobalNodes(res.nodes || [])
     } catch (err) {
       console.error("Failed to load global mindmap", err)
@@ -113,10 +111,11 @@ export default function MindmapPage() {
           orientation="horizontal"
           nodeSize={{ x: 220, y: 120 }}
           translate={translate}
-          pathFunc="step"
+          pathFunc="diagonal"
           zoom={1}
           scaleExtent={{ min: 0.5, max: 1.5 }}
           enableLegacyTransitions
+          pathClassFunc={()=>"custom-link"}
 
           renderCustomNodeElement={({ nodeDatum }) => {
             const score = (nodeDatum as any).importance_score || 0
@@ -146,6 +145,8 @@ export default function MindmapPage() {
                 <text
                   fill="white"
                   textAnchor="middle"
+                  stroke="none"
+                  strokeWidth="0"
                   fontSize="12"
                 >
                   {lines.map((line, i) => (

@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
+	"log"
 	aiclient "techmemo/backend/ai/client"
 	"techmemo/backend/common/errors"
 	"techmemo/backend/dao"
 	"techmemo/backend/handler/dto"
 )
 
-const Threshold = 0.5
+const Threshold = 0.7
 
 type SearchService struct {
 	searchDao   *dao.SearchDao
@@ -42,6 +43,8 @@ func (s *SearchService) SemanticSearch(
 	if err != nil {
 		return nil, errors.InternalErr
 	}
+
+	log.Println(searchResults)
 
 	if len(searchResults) == 0 {
 		return &dto.SemanticSearchResp{
