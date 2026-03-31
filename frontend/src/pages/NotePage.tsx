@@ -201,15 +201,6 @@ export default function NotePage() {
         } catch (err) { console.error(err) }
     }
 
-    const handleDeleteNote = async () => {
-        if (!selectedNote) return
-        try {
-            await deleteNote(selectedNote.id)
-            setNotes(prev => prev.filter(n => n.id !== selectedNote.id))
-            setSelectedNote(null)
-        } catch (err) { console.error(err) }
-    }
-
     const handleCreateCategory = async () => {
         if (!newCategoryName.trim()) return
         try {
@@ -326,7 +317,7 @@ export default function NotePage() {
     }
 
     return (
-        <div className="flex h-screen overflow-hidden">
+        <div className="flex h-screen w-full overflow-hidden">
             {/* 左侧边栏 */}
             <div className="w-64 min-w-[256px] border-r flex flex-col bg-background">
                 {/* 分类区 */}

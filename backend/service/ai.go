@@ -95,7 +95,16 @@ func (a *AIService) SetQueue(q queue.Queue) {
 	a.queue = q
 }
 
+func (a *AIService) cleanNoteAIData(ctx context.Context, noteID int64) {
+	_ = a.aiDao.DeleteEmbeddingsByNoteID(ctx, noteID)
+	_ = a.aiDao.DeleteRelationsByNoteID(ctx, noteID)
+	_ = a.aiDao.DeleteNoteRootNodesByNoteID(ctx, noteID)
+	_ = a.aiDao.DeleteKnowledgePointsByNoteID(ctx, noteID)
+}
+
 func (a *AIService) SubmitTask(ctx context.Context, noteID int64) (string, error) {
+	a.cleanNoteAIData(ctx, noteID)
+
 	taskID := generateTaskID(noteID)
 
 	err := a.aiDao.CreateAILog(ctx, dao.CreateAILogParams{

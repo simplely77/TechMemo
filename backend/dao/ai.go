@@ -135,6 +135,76 @@ func (d *AIDao) DeleteGlobalRelationsByUserID(ctx context.Context, userID int64)
 		)`, userID).Error
 }
 
+// DeleteKnowledgePointsByNoteID 删除笔记相关的所有知识点
+func (d *AIDao) DeleteKnowledgePointsByNoteID(ctx context.Context, noteID int64) error {
+	_, err := d.q.KnowledgePoint.WithContext(ctx).
+		Where(d.q.KnowledgePoint.SourceNoteID.Eq(noteID)).
+		Delete()
+	return err
+}
+
+// DeleteEmbeddingsByNoteID 删除笔记及其知识点的所有向量
+func (d *AIDao) DeleteEmbeddingsByNoteID(ctx context.Context, noteID int64) error {
+	// 先获取该笔记的所有知识点ID
+	kps, err := d.q.KnowledgePoint.WithContext(ctx).
+		Where(d.q.KnowledgePoint.SourceNoteID.Eq(noteID)).
+		Select(d.q.KnowledgePoint.ID).
+		Find()
+	if err != nil {
+		return err
+	}
+
+	// 删除笔记的向量
+	if err := d.db.WithContext(ctx).
+		Where("target_type = ? AND target_id = ?", "note", noteID).
+		Delete(&model.Embedding{}).Error; err != nil {
+		return err
+	}
+
+	// 删除知识点的向量
+	if len(kps) > 0 {
+		ids := make([]int64, len(kps))
+		for i, kp := range kps {
+			ids[i] = kp.ID
+		}
+		if err := d.db.WithContext(ctx).
+			Where("target_type = ? AND target_id IN ?", "knowledge", ids).
+			Delete(&model.Embedding{}).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// DeleteRelationsByNoteID 删除笔记相关知识点的所有关系
+func (d *AIDao) DeleteRelationsByNoteID(ctx context.Context, noteID int64) error {
+	kps, err := d.q.KnowledgePoint.WithContext(ctx).
+		Where(d.q.KnowledgePoint.SourceNoteID.Eq(noteID)).
+		Select(d.q.KnowledgePoint.ID).
+		Find()
+	if err != nil || len(kps) == 0 {
+		return err
+	}
+
+	ids := make([]int64, len(kps))
+	for i, kp := range kps {
+		ids[i] = kp.ID
+	}
+
+	_, err = d.q.KnowledgeRelation.WithContext(ctx).
+		Where(d.q.KnowledgeRelation.FromKnowledgeID.In(ids...)).
+		Delete()
+	return err
+}
+
+// DeleteNoteRootNodesByNoteID 删除笔记的根节点记录
+func (d *AIDao) DeleteNoteRootNodesByNoteID(ctx context.Context, noteID int64) error {
+	return d.db.WithContext(ctx).
+		Where("note_id = ?", noteID).
+		Delete(&model.NoteRootNode{}).Error
+}
+
 func NewAIDao(q *query.Query, db *gorm.DB) *AIDao {
 	return &AIDao{q: q, db: db}
 }
