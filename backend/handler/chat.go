@@ -194,23 +194,10 @@ func HandlerSendMessageStream(svc *service.ChatService) gin.HandlerFunc {
 
 		ctx := c.Request.Context()
 
-		go func() {
-			ticker := time.NewTicker(20 * time.Second)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					fmt.Fprintf(c.Writer, ": ping\n\n")
-					flusher.Flush()
-				}
-			}
-		}()
-
 		// 用于收集完整回答（后面存数据库）
 		var fullContent strings.Builder
+
+		lastPing := time.Now()
 
 		err = svc.SendMessageStream(
 			ctx,
@@ -218,17 +205,23 @@ func HandlerSendMessageStream(svc *service.ChatService) gin.HandlerFunc {
 			userID,
 			req.Content,
 			func(delta string) bool {
+				if time.Since(lastPing) > 20*time.Second {
+					fmt.Fprintf(c.Writer, ": ping\n\n")
+					lastPing = time.Now()
+				}
+
 				select {
 				case <-ctx.Done():
 					return false
 				default:
 				}
-				// 累积完整回答
-				fullContent.WriteString(delta)
 
 				// SSE 输出
 				writeSSE(c.Writer, "", delta)
 				flusher.Flush()
+
+				// 累积完整回答
+				fullContent.WriteString(delta)
 				return true
 			},
 		)
@@ -249,9 +242,13 @@ func writeSSE(w io.Writer, event, data string) {
 	if event != "" {
 		fmt.Fprintf(w, "event: %s\n", event)
 	}
+
+	data = strings.ReplaceAll(data, "\r", "")
+
 	for _, line := range strings.Split(data, "\n") {
 		fmt.Fprintf(w, "data: %s\n", line)
 	}
+
 	fmt.Fprint(w, "\n")
 }
 

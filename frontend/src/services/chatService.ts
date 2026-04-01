@@ -2,6 +2,8 @@ import { apiDelete, apiGet, apiPost } from '@/utils/api'
 
 // ============ 类型定义 ============
 
+const BASE_URL = 'http://localhost:8080/api/v1'
+
 export interface CreateSessionRequest {
   title?: string
 }
@@ -75,7 +77,7 @@ export const sendMessage = (sessionId: number, data: SendMessageReq) => {
  * 发送消息（流式返回）
  */
 export const sendMessageStream = (sessionId: number, data: SendMessageReq) => {
-  return fetch(`/api/v1/chat/sessions/${sessionId}/stream`, {
+  return fetch(`${BASE_URL}/chat/sessions/${sessionId}/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

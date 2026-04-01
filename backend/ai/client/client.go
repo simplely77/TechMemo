@@ -388,7 +388,7 @@ func (c *OpenAIClient) ChatStream(
 			Model:       c.chatModel,
 			Messages:    openaiMessage,
 			Temperature: 0.3,
-			MaxTokens:   300,
+			MaxTokens:   4000,
 			Stream:      true,
 		},
 	)
@@ -414,7 +414,8 @@ func (c *OpenAIClient) ChatStream(
 			continue
 		}
 		delta := response.Choices[0].Delta.Content
-		if delta != "" {
+		log.Println("流式传输大模型返回数据：", delta)
+		if delta == "" {
 			continue
 		}
 		if !onDelta(delta) {

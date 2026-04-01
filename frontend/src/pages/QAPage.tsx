@@ -10,6 +10,17 @@ import {
   type ChatMessageResp,
   deleteSession
 } from "@/services/chatService"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import remarkBreaks from 'remark-breaks'
+import rehypeKatex from 'rehype-katex'
+import rehypeHighlight from 'rehype-highlight'
+import rehypeSlug from 'rehype-slug'
+import rehypeAutolinkHeadings from 'rehype-autolink-headings'
+import rehypeRaw from 'rehype-raw'
+import 'katex/dist/katex.min.css'
+import 'highlight.js/styles/github-dark.css'
 
 interface Message extends ChatMessageResp {
   localId: string
@@ -63,15 +74,15 @@ export default function QAPage() {
     }
   }
 
-  const handleDeleteSession = async(id:number)=>{
+  const handleDeleteSession = async (id: number) => {
     try {
       await deleteSession(id)
-      if (currentSession?.id===id){
+      if (currentSession?.id === id) {
         setCurrentSession(null)
       }
       setSessions(prev => prev.filter(s => s.id !== id))
-    }catch(err){
-      console.error("Failed to delete session",err)
+    } catch (err) {
+      console.error("Failed to delete session", err)
     }
   }
 
@@ -86,64 +97,97 @@ export default function QAPage() {
     }
   }
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || !currentSession) return
+const handleSendMessage = async () => {
+  if (!input.trim() || !currentSession) return
 
-    const now = Date.now()
-    const userMessage: Message = {
-      id: now,
-      session_id: currentSession.id,
-      role: "user",
-      content: input,
-      created_at: new Date().toISOString(),
-      localId: `user-${now}`
-    }
+  const now = Date.now()
 
-    setMessages(prev => [...prev, userMessage])
-    setInput("")
-    setLoading(true)
-
-    try {
-      const response = await sendMessageStream(currentSession.id, { content: input })
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantContent = ""
-
-      const assistantMessage: Message = {
-        id: (now + 1),
-        session_id: currentSession.id,
-        role: "assistant",
-        content: "",
-        created_at: new Date().toISOString(),
-        localId: `assistant-${now + 1}`
-      }
-
-      setMessages(prev => [...prev, assistantMessage])
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunk = decoder.decode(value)
-          assistantContent += chunk
-
-          setMessages(prev => {
-            const updated = [...prev]
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              content: assistantContent
-            }
-            return updated
-          })
-        }
-      }
-    } catch (err) {
-      console.error("Failed to send message", err)
-    } finally {
-      setLoading(false)
-    }
+  const userMessage: Message = {
+    id: now,
+    session_id: currentSession.id,
+    role: "user",
+    content: input,
+    created_at: new Date().toISOString(),
+    localId: `user-${now}`
   }
+
+  setMessages(prev => [...prev, userMessage])
+  setInput("")
+  setLoading(true)
+
+  try {
+    const response = await sendMessageStream(currentSession.id, { content: input })
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    let buffer = ""
+    let assistantContent = ""
+
+    const assistantMessage: Message = {
+      id: now + 1,
+      session_id: currentSession.id,
+      role: "assistant",
+      content: "",
+      created_at: new Date().toISOString(),
+      localId: `assistant-${now + 1}`
+    }
+
+    setMessages(prev => [...prev, assistantMessage])
+
+    if (!reader) return
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      const events = buffer.split("\n\n")
+      buffer = events.pop() || "" // 剩余不完整的留着
+
+      for (const evt of events) {
+        let eventType = "message"
+        let dataLines: string[] = []
+
+        const lines = evt.split("\n")
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim()
+          } else if (line.startsWith("data: ")) {
+            dataLines.push(line.slice(6))
+          }
+        }
+
+        const data = dataLines.join("\n")
+
+        if (eventType === "done") {
+          break
+        }
+
+        if (eventType === "error") {
+          console.error("SSE error:", data)
+          continue
+        }
+
+        assistantContent += data
+
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            content: assistantContent
+          }
+          return updated
+        })
+      }
+    }
+  } catch (err) {
+    console.error("Failed to send message", err)
+  } finally {
+    setLoading(false)
+  }
+}
 
   return (
     <div className="h-full p-6 flex gap-6 overflow-hidden">
@@ -210,12 +254,22 @@ export default function QAPage() {
                     className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${msg.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                        }`}
+                      className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-muted text-muted-foreground"
                     >
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+                          rehypePlugins={[
+                            rehypeRaw,
+                            rehypeKatex,
+                            rehypeHighlight,
+                            rehypeSlug,
+                            [rehypeAutolinkHeadings, { behavior: 'wrap' }]
+                          ]}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
                       <p className="text-xs opacity-70 mt-1">
                         {new Date(msg.created_at).toLocaleTimeString()}
                       </p>

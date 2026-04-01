@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"unicode"
 
@@ -176,48 +177,49 @@ func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, us
 		Content:    content,
 		TokenCount: s.estimateTokens(content),
 	})
+
 	if err != nil {
+		log.Println(err)
 		return errors.InternalErr
 	}
 	s.enqueueMessageEmbedding(ctx, userMsg.ID)
 
 	ragMessages, err := s.buildRAGContext(ctx, content, sessionID, userID)
 	if err != nil {
+		log.Println(err)
 		return errors.InternalErr
 	}
 
 	var fullReply strings.Builder
 
 	err = s.aiClient.ChatStream(ctx, ragMessages, func(delta string) bool {
-		select {
-		case <-ctx.Done():
-			return false
-		default:
-		}
 
 		fullReply.WriteString(delta)
 
 		return onDelta(delta) // 由上层决定是否继续
 	})
 	if err != nil {
+		log.Println(err)
 		return errors.InternalErr
 	}
 
 	reply := fullReply.String()
+	log.Println(reply)
+	if reply != "" {
+		aiMsg, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
+			SessionID:  sessionID,
+			UserID:     userID,
+			Role:       "assistant",
+			Content:    reply,
+			TokenCount: s.estimateTokens(reply),
+		})
+		if err != nil {
+			log.Println(err)
+			return errors.InternalErr
+		}
 
-	aiMsg, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
-		SessionID:  sessionID,
-		UserID:     userID,
-		Role:       "assistant",
-		Content:    reply,
-		TokenCount: s.estimateTokens(reply),
-	})
-	if err != nil {
-		return errors.InternalErr
+		s.enqueueMessageEmbedding(ctx, aiMsg.ID)
 	}
-
-	s.enqueueMessageEmbedding(ctx, aiMsg.ID)
-
 	return nil
 }
 
