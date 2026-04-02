@@ -16,6 +16,7 @@ type NoteService struct {
 	noteDao     *dao.NoteDao
 	categoryDao *dao.CategoryDao
 	tagDao      *dao.TagDao
+	kpDao       *dao.KnowledgePointDao
 	q           *query.Query
 }
 
@@ -108,17 +109,60 @@ func (n *NoteService) DeleteNote(ctx context.Context, id int64) error {
 	return n.q.Transaction(func(tx *query.Query) error {
 		noteDao := dao.NewNoteDao(tx)
 
-		// 删除笔记标签关联，软删除
-		// if err := noteDao.DeleteNoteTagsByNoteID(ctx, id); err != nil {
-		// 	return errors.InternalErr
-		// }
-
-		// 删除笔记，软删除
+		// 软删除笔记（修改 status 为 deleted）
 		err := noteDao.DeleteNoteByID(ctx, id)
 		if err != nil {
 			if stderrors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.NoteNotFound
 			}
+			return errors.InternalErr
+		}
+
+		// 同步删除关联知识点（含 knowledge_relation 和 embedding）
+		kpDao := dao.NewKnowledgePointDao(tx)
+		kps, err := kpDao.GetKnowledgePointsBySourceNoteID(ctx, id)
+		if err != nil {
+			return errors.InternalErr
+		}
+		for _, kp := range kps {
+			if err := kpDao.DeleteKnowledgePoint(ctx, kp.ID); err != nil {
+				return errors.InternalErr
+			}
+		}
+
+		// 删除笔记的 embedding
+		if _, err := tx.Embedding.WithContext(ctx).
+			Where(tx.Embedding.TargetType.Eq("note")).
+			Where(tx.Embedding.TargetID.Eq(id)).
+			Delete(); err != nil {
+			return errors.InternalErr
+		}
+
+		return nil
+	})
+}
+
+// PermanentlyDeleteNote 永久删除笔记及其所有关联数据
+func (n *NoteService) PermanentlyDeleteNote(ctx context.Context, id int64) error {
+	return n.q.Transaction(func(tx *query.Query) error {
+		noteDao := dao.NewNoteDao(tx)
+
+		// 检查笔记是否存在（包括已软删除的）
+		note, err := tx.Note.WithContext(ctx).Where(tx.Note.ID.Eq(id)).First()
+		if err != nil {
+			if stderrors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.NoteNotFound
+			}
+			return errors.InternalErr
+		}
+
+		// 只能永久删除已软删除的笔记
+		if note.Status != "deleted" {
+			return errors.InvalidParam
+		}
+
+		// 永久删除笔记及其所有关联数据
+		if err := noteDao.PermanentlyDeleteNote(ctx, id); err != nil {
 			return errors.InternalErr
 		}
 
@@ -385,6 +429,6 @@ func (n *NoteService) CreateNoteWithTags(ctx context.Context, req *dto.CreateNot
 	return n.GetNote(ctx, note.ID)
 }
 
-func NewNoteService(noteDao *dao.NoteDao, categoryDao *dao.CategoryDao, tagDao *dao.TagDao, q *query.Query) *NoteService {
-	return &NoteService{noteDao: noteDao, categoryDao: categoryDao, tagDao: tagDao, q: q}
+func NewNoteService(noteDao *dao.NoteDao, categoryDao *dao.CategoryDao, tagDao *dao.TagDao, kpDao *dao.KnowledgePointDao, q *query.Query) *NoteService {
+	return &NoteService{noteDao: noteDao, categoryDao: categoryDao, tagDao: tagDao, kpDao: kpDao, q: q}
 }

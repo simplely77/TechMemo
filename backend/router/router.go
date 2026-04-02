@@ -67,14 +67,15 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 			// 笔记管理
 			notes := authorized.Group("/notes")
 			{
-				notes.GET("", handler.HandlerGetNotes(app.NoteService))       // 获取笔记列表
-				notes.POST("", handler.HandlerCreateNote(app.NoteService))    // 创建笔记
-				notes.GET("/:id", handler.HandlerGetNote(app.NoteService))    // 获取笔记详情
-				notes.PUT("/:id", handler.HandlerUpdateNote(app.NoteService)) // 更新笔记
-				notes.PUT("/:id/tags", handler.HandlerUpdateNoteTags(app.NoteService))
-				notes.DELETE("/:id", handler.HandlerDeleteNote(app.NoteService))                             // 删除笔记
+				notes.GET("", handler.HandlerGetNotes(app.NoteService))                                      // 获取笔记列表
+				notes.POST("", handler.HandlerCreateNote(app.NoteService))                                   // 创建笔记
+				notes.GET("/:id", handler.HandlerGetNote(app.NoteService))                                   // 获取笔记详情
+				notes.PUT("/:id", handler.HandlerUpdateNote(app.NoteService))                                // 更新笔记
+				notes.PUT("/:id/tags", handler.HandlerUpdateNoteTags(app.NoteService))                       // 更新笔记标签
+				notes.DELETE("/:id", handler.HandlerDeleteNote(app.NoteService))                             // 软删除笔记
+				notes.DELETE("/:id/permanent", handler.HandlerPermanentlyDeleteNote(app.NoteService))        // 永久删除笔记
 				notes.GET("/:id/versions", handler.HandlerGetNoteVersions(app.NoteService))                  // 获取版本历史
-				notes.POST("/:id/versions/:version_id/restore", handler.HandlerRestoreNote(app.NoteService)) // 恢复版本                                                   // 提取知识点
+				notes.POST("/:id/versions/:version_id/restore", handler.HandlerRestoreNote(app.NoteService)) // 恢复版本
 			}
 
 			// 知识点管理

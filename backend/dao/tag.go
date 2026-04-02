@@ -12,6 +12,14 @@ type TagDao struct {
 	q *query.Query
 }
 
+func (t *TagDao) DeleteNoteTagsByTagId(ctx context.Context, id int64) error {
+	_, err := t.q.NoteTag.
+		WithContext(ctx).
+		Where(t.q.NoteTag.TagID.Eq(id)).
+		Delete()
+	return err
+}
+
 func (t *TagDao) GetTagByID(ctx context.Context, id int64) (*model.Tag, error) {
 	return t.q.Tag.
 		WithContext(ctx).

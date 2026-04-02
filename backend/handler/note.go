@@ -280,3 +280,29 @@ func HandlerRestoreNote(noteService *service.NoteService) gin.HandlerFunc {
 		response.Success(c, resp)
 	}
 }
+
+// @Summary 永久删除笔记
+// @Description 永久删除已软删除的笔记及其所有关联数据（标签关联、版本历史、知识点、向量数据）
+// @Tags 笔记
+// @Security BearerAuth
+// @Param id path int64 true "笔记ID"
+// @Success 200 {object} response.Response "永久删除笔记成功"
+// @Router /api/v1/notes/{id}/permanent [delete]
+func HandlerPermanentlyDeleteNote(noteService *service.NoteService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			response.Fail(c, errors.InvalidParam)
+			return
+		}
+
+		err = noteService.PermanentlyDeleteNote(c.Request.Context(), id)
+		if err != nil {
+			response.FailErr(c, err)
+			return
+		}
+
+		response.Success(c, nil)
+	}
+}

@@ -216,6 +216,39 @@ func (n *NoteDao) CreateNote(ctx context.Context, note *model.Note) error {
 		Create(note)
 }
 
+// PermanentlyDeleteNote 永久删除笔记及其所有关联数据
+func (n *NoteDao) PermanentlyDeleteNote(ctx context.Context, noteID int64) error {
+	// 删除笔记标签关联
+	if _, err := n.q.NoteTag.WithContext(ctx).Where(n.q.NoteTag.NoteID.Eq(noteID)).Delete(); err != nil {
+		return err
+	}
+
+	// 删除笔记版本历史
+	if _, err := n.q.NoteVersion.WithContext(ctx).Where(n.q.NoteVersion.NoteID.Eq(noteID)).Delete(); err != nil {
+		return err
+	}
+
+	// 删除关联的知识点
+	if _, err := n.q.KnowledgePoint.WithContext(ctx).Where(n.q.KnowledgePoint.SourceNoteID.Eq(noteID)).Delete(); err != nil {
+		return err
+	}
+
+	// 删除笔记的 embedding
+	if _, err := n.q.Embedding.WithContext(ctx).
+		Where(n.q.Embedding.TargetType.Eq("note")).
+		Where(n.q.Embedding.TargetID.Eq(noteID)).
+		Delete(); err != nil {
+		return err
+	}
+
+	// 最后删除笔记本身（物理删除）
+	if _, err := n.q.Note.WithContext(ctx).Where(n.q.Note.ID.Eq(noteID)).Delete(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func NewNoteDao(q *query.Query) *NoteDao {
 	return &NoteDao{q: q}
 }

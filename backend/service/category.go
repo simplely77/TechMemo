@@ -13,10 +13,15 @@ import (
 
 type CategoryService struct {
 	categoryDao *dao.CategoryDao
+	noteDao     *dao.NoteDao
 }
 
 func (c *CategoryService) DeleteCategory(ctx context.Context, id int64) error {
-	err := c.categoryDao.DeleteCategory(ctx, id)
+	notes, err := c.noteDao.GetNotesByCid(ctx, id)
+	if len(notes) > 0 {
+		return errors.HasNotes
+	}
+	err = c.categoryDao.DeleteCategory(ctx, id)
 	if err != nil {
 		if stderrors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.CategoryNotFound
@@ -101,6 +106,6 @@ func (c *CategoryService) GetCategorys(ctx context.Context, userID int64) (*dto.
 	return &dto.GetCategoriesResp{Categories: dtoCategories}, nil
 }
 
-func NewCategoryService(categoryDao *dao.CategoryDao) *CategoryService {
-	return &CategoryService{categoryDao: categoryDao}
+func NewCategoryService(categoryDao *dao.CategoryDao, noteDao *dao.NoteDao) *CategoryService {
+	return &CategoryService{categoryDao: categoryDao, noteDao: noteDao}
 }

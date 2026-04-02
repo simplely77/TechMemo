@@ -88,7 +88,34 @@ func (d *KnowledgePointDao) UpdateKnowledgePoint(ctx context.Context, id int64, 
 	return err
 }
 
+func (d *KnowledgePointDao) GetKnowledgePointsBySourceNoteID(ctx context.Context, noteID int64) ([]*model.KnowledgePoint, error) {
+	return d.q.KnowledgePoint.WithContext(ctx).
+		Where(d.q.KnowledgePoint.SourceNoteID.Eq(noteID)).
+		Find()
+}
+
 func (d *KnowledgePointDao) DeleteKnowledgePoint(ctx context.Context, id int64) error {
+	// 删除知识点关联关系（作为源或目标）
+	if _, err := d.q.KnowledgeRelation.WithContext(ctx).
+		Where(d.q.KnowledgeRelation.FromKnowledgeID.Eq(id)).
+		Delete(); err != nil {
+		return err
+	}
+	if _, err := d.q.KnowledgeRelation.WithContext(ctx).
+		Where(d.q.KnowledgeRelation.ToKnowledgeID.Eq(id)).
+		Delete(); err != nil {
+		return err
+	}
+
+	// 删除知识点的 embedding
+	if _, err := d.q.Embedding.WithContext(ctx).
+		Where(d.q.Embedding.TargetType.Eq("knowledge")).
+		Where(d.q.Embedding.TargetID.Eq(id)).
+		Delete(); err != nil {
+		return err
+	}
+
+	// 删除知识点本身
 	_, err := d.q.KnowledgePoint.WithContext(ctx).
 		Where(d.q.KnowledgePoint.ID.Eq(id)).
 		Delete()

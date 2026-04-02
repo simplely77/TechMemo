@@ -23,16 +23,16 @@ type App struct {
 func InitApp() *App {
 	userDao := dao.NewUserDao(database.Q)
 	userService := service.NewUserService(userDao)
-	categoryDao := dao.NewCategoryDao(database.Q)
-	categoryService := service.NewCategoryService(categoryDao)
 	tagDao := dao.NewTagDao(database.Q)
 	tagService := service.NewTagService(tagDao)
 	noteDao := dao.NewNoteDao(database.Q)
-	noteService := service.NewNoteService(noteDao, categoryDao, tagDao, database.Q)
 	chatDao := dao.NewChatDao(database.Q)
 	aiDao := dao.NewAIDao(database.Q, database.DB)
+	categoryDao := dao.NewCategoryDao(database.Q)
+	categoryService := service.NewCategoryService(categoryDao, noteDao)
 
 	knowledgePointDao := dao.NewKnowledgePointDao(database.Q)
+	noteService := service.NewNoteService(noteDao, categoryDao, tagDao, knowledgePointDao, database.Q)
 	knowledgePointService := service.NewKnowledgePointService(knowledgePointDao, noteDao)
 
 	// 初始化 SearchService

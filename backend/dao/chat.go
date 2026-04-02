@@ -69,20 +69,35 @@ func (c *ChatDao) UpdateSessionTitle(ctx context.Context, sessionID int64, title
 	return err
 }
 
-// DeleteSession 删除会话（级联删除消息）
+// DeleteSession 删除会话（级联删除消息和 embedding）
 func (c *ChatDao) DeleteSession(ctx context.Context, sessionID int64) error {
-	// 先删除该会话的所有消息
-	_, err := c.q.ChatMessage.
-		WithContext(ctx).
+	// 查出该会话所有消息 ID
+	var msgIDs []int64
+	if err := c.q.ChatMessage.WithContext(ctx).
 		Where(c.q.ChatMessage.SessionID.Eq(sessionID)).
-		Delete()
-	if err != nil {
+		Pluck(c.q.ChatMessage.ID, &msgIDs); err != nil {
 		return err
 	}
 
-	// 再删除会话
-	_, err = c.q.ChatSession.
-		WithContext(ctx).
+	// 删除消息的 embedding
+	if len(msgIDs) > 0 {
+		if _, err := c.q.Embedding.WithContext(ctx).
+			Where(c.q.Embedding.TargetType.Eq("chat_message")).
+			Where(c.q.Embedding.TargetID.In(msgIDs...)).
+			Delete(); err != nil {
+			return err
+		}
+	}
+
+	// 删除消息
+	if _, err := c.q.ChatMessage.WithContext(ctx).
+		Where(c.q.ChatMessage.SessionID.Eq(sessionID)).
+		Delete(); err != nil {
+		return err
+	}
+
+	// 删除会话
+	_, err := c.q.ChatSession.WithContext(ctx).
 		Where(c.q.ChatSession.ID.Eq(sessionID)).
 		Delete()
 	return err

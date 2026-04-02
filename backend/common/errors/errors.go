@@ -27,6 +27,7 @@ var (
 	// 分类模块
 	CategoryExists   = ErrorCode{42001, "分类已存在"}
 	CategoryNotFound = ErrorCode{42002, "分类不存在"}
+	HasNotes         = ErrorCode{42003, "该分类下存在笔记，不能删除"}
 
 	// 标签模块
 	TagExists   = ErrorCode{43001, "标签已存在"}

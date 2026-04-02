@@ -23,6 +23,10 @@ func (t *TagService) DeleteTag(ctx context.Context, id int64) error {
 		}
 		return errors.InternalErr
 	}
+	err = t.tagDao.DeleteNoteTagsByTagId(ctx, id)
+	if err != nil {
+		return errors.InternalErr
+	}
 	return nil
 }
 
