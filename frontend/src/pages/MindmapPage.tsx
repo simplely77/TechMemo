@@ -1,19 +1,27 @@
 import { useEffect, useState, useRef } from "react"
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getNotes, type Note } from "@/services/noteService"
+import { getNotes, getNote, type Note } from "@/services/noteService"
 import { getMindMap, getGlobalMindMap, generateGlobalMindMap, type MindMapNode, type GlobalMindMapNode } from "@/services/aiService"
 import Tree from 'react-d3-tree'
 
-type ViewMode = "note" | "global"
-
 export default function MindmapPage() {
+  const { scope } = useParams<{ scope?: string }>()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isGlobalView = scope === "global"
+  const noteIdFromRoute =
+    scope && scope !== "global" && /^\d+$/.test(scope) ? Number(scope) : null
+  const kpRaw = searchParams.get("kp")
+  const selectedKpId =
+    kpRaw != null && /^\d+$/.test(kpRaw) ? Number(kpRaw) : null
+
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [mindmapNodes, setMindmapNodes] = useState<MindMapNode[]>([])
   const [globalNodes, setGlobalNodes] = useState<GlobalMindMapNode[]>([])
-  const [viewMode, setViewMode] = useState<ViewMode>("note")
   const [generating, setGenerating] = useState(false)
   const [hoveredNode, setHoveredNode] = useState<any>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
@@ -27,7 +35,7 @@ export default function MindmapPage() {
   useEffect(() => {
     if (containerRef.current && mindmapNodes.length > 0) {
       const { offsetWidth,offsetHeight } = containerRef.current
-      setTranslate({ x: offsetWidth / 10, y: offsetHeight / 2 }) // 根节点水平居中
+      setTranslate({ x: offsetWidth / 8, y: offsetHeight / 2 }) // 根节点水平居中
     }
   }, [containerRef.current, mindmapNodes])
 
@@ -43,31 +51,76 @@ export default function MindmapPage() {
     }
   }
 
-  const handleSelectNote = async (note: Note) => {
-    setSelectedNote(note)
-    setViewMode("note")
-    setHoveredNode(null)
-    try {
-      const res = await getMindMap(note.id)
-      setMindmapNodes(res.nodes || [])
-    } catch (err) {
-      console.error("Failed to load mindmap", err)
+  // 按路由 scope 加载：无 scope | global | 笔记 id
+  useEffect(() => {
+    let cancelled = false
+    if (!scope) {
       setMindmapNodes([])
-    }
-  }
-
-  const handleLoadGlobalMindmap = async () => {
-    setViewMode("global")
-    setSelectedNote(null)
-    setHoveredNode(null)
-    try {
-      const res = await getGlobalMindMap()
-      setGlobalNodes(res.nodes || [])
-    } catch (err) {
-      console.error("Failed to load global mindmap", err)
       setGlobalNodes([])
+      setSelectedNote(null)
+      setHoveredNode(null)
+      return
     }
-  }
+    if (scope === "global") {
+      setMindmapNodes([])
+      setSelectedNote(null)
+      setHoveredNode(null)
+      ;(async () => {
+        try {
+          const res = await getGlobalMindMap()
+          if (!cancelled) setGlobalNodes(res.nodes || [])
+        } catch (err) {
+          console.error("Failed to load global mindmap", err)
+          if (!cancelled) setGlobalNodes([])
+        }
+      })()
+      return () => {
+        cancelled = true
+      }
+    }
+    const noteId = Number(scope)
+    if (!Number.isFinite(noteId) || noteId < 1) {
+      navigate("/mindmap", { replace: true })
+      return
+    }
+    setGlobalNodes([])
+    setHoveredNode(null)
+    ;(async () => {
+      try {
+        const [mapRes, noteFull] = await Promise.all([
+          getMindMap(noteId),
+          getNote(noteId).catch(() => null),
+        ])
+        if (cancelled) return
+        setMindmapNodes(mapRes.nodes || [])
+        setSelectedNote(noteFull)
+      } catch (err) {
+        console.error("Failed to load mindmap", err)
+        if (!cancelled) {
+          setMindmapNodes([])
+          setSelectedNote(null)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [scope, navigate])
+
+  // /mindmap 且无 scope 时，默认打开笔记列表第一篇（不含 /mindmap/global）
+  useEffect(() => {
+    if (scope) return
+    if (loading || notes.length === 0) return
+    navigate(`/mindmap/${notes[0].id}`, { replace: true })
+  }, [scope, loading, notes, navigate])
+
+  // URL 中的知识点 id 若不在当前树里（换笔记或数据变更），去掉无效 kp
+  useEffect(() => {
+    if (noteIdFromRoute == null || selectedKpId == null || mindmapNodes.length === 0) return
+    if (!findNodeById(mindmapNodes, selectedKpId)) {
+      navigate(`/mindmap/${noteIdFromRoute}`, { replace: true })
+    }
+  }, [noteIdFromRoute, selectedKpId, mindmapNodes, navigate])
 
   const handleGenerateGlobalMindmap = async () => {
     setGenerating(true)
@@ -99,7 +152,7 @@ export default function MindmapPage() {
     return '#22c55e'
   }
 
-  const renderMindmapTree = (nodes: MindMapNode[]) => {
+  const renderMindmapTree = (nodes: MindMapNode[], activeNoteId: number) => {
     if (!nodes || nodes.length === 0) return null
 
     const treeData = nodes[0]
@@ -120,9 +173,10 @@ export default function MindmapPage() {
           renderCustomNodeElement={({ nodeDatum }) => {
             const score = (nodeDatum as any).importance_score || 0
             const color = getNodeColor(score)
-            const nodeData = nodeDatum as any
+            const nodeData = nodeDatum as unknown as MindMapNode
             const name = nodeDatum.name
             const lines = name.match(/.{1,8}/g) || []
+            const isKpSelected = selectedKpId != null && nodeData.id === selectedKpId
 
             return (
               <g
@@ -131,6 +185,10 @@ export default function MindmapPage() {
                   setMousePos({ x: e.clientX, y: e.clientY })
                 }}
                 onMouseLeave={() => setHoveredNode(null)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  navigate(`/mindmap/${activeNoteId}?kp=${nodeData.id}`, { replace: true })
+                }}
                 style={{ cursor: 'pointer' }}
               >
                 <rect
@@ -140,7 +198,8 @@ export default function MindmapPage() {
                   y="-25"
                   rx="12"
                   fill={color}
-                  strokeWidth="2"
+                  stroke={isKpSelected ? '#fafafa' : 'none'}
+                  strokeWidth={isKpSelected ? 3 : 0}
                 />
                 <text
                   fill="white"
@@ -171,6 +230,12 @@ export default function MindmapPage() {
             }}
           >
             <div className="space-y-2">
+              {typeof hoveredNode.id === 'number' && (
+                <div>
+                  <p className="text-xs text-muted-foreground">知识点 ID</p>
+                  <p className="font-mono text-sm">{hoveredNode.id}</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-muted-foreground">名称</p>
                 <p className="font-semibold">{hoveredNode.name}</p>
@@ -212,7 +277,7 @@ export default function MindmapPage() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">思维导图</h1>
           <div className="flex gap-2">
-            <Button onClick={handleLoadGlobalMindmap} variant="outline">
+            <Button onClick={() => navigate("/mindmap/global")} variant="outline">
               查看全局知识图谱
             </Button>
             <Button onClick={handleGenerateGlobalMindmap} disabled={generating}>
@@ -238,11 +303,11 @@ export default function MindmapPage() {
                     {notes.map((note) => (
                       <div
                         key={note.id}
-                        className={`p-2 rounded cursor-pointer text-sm transition-all ${selectedNote?.id === note.id
+                        className={`p-2 rounded cursor-pointer text-sm transition-all ${noteIdFromRoute === note.id
                           ? "bg-primary text-primary-foreground shadow-sm"
                           : "hover:bg-accent"
                           }`}
-                        onClick={() => handleSelectNote(note)}
+                        onClick={() => navigate(`/mindmap/${note.id}`)}
                       >
                         <p className="font-semibold truncate line-clamp-2">{note.title}</p>
                         <p className="text-xs opacity-70">{note.category.name}</p>
@@ -259,15 +324,15 @@ export default function MindmapPage() {
             <Card className="h-full overflow-hidden">
               <CardHeader>
                 <CardTitle className="text-lg">
-                  {viewMode === "note" && selectedNote
-                    ? `${selectedNote.title} - 思维导图`
-                    : viewMode === "global"
-                      ? "全局知识图谱"
+                  {isGlobalView
+                    ? "全局知识图谱"
+                    : noteIdFromRoute != null
+                      ? `${selectedNote?.title ?? `笔记 #${noteIdFromRoute}`} - 思维导图`
                       : "选择笔记查看思维导图"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {viewMode === "note" && selectedNote ? (
+                {noteIdFromRoute != null ? (
                   mindmapNodes.length === 0 ? (
                     <div className="text-center py-20">
                       <div className="text-6xl mb-4">🤖</div>
@@ -280,10 +345,10 @@ export default function MindmapPage() {
                     </div>
                   ) : (
                     <div>
-                      {renderMindmapTree(mindmapNodes)}
+                      {renderMindmapTree(mindmapNodes, noteIdFromRoute)}
                     </div>
                   )
-                ) : viewMode === "global" ? (
+                ) : isGlobalView ? (
                   globalNodes.length === 0 ? (
                     <div className="text-center py-20">
                       <div className="text-6xl mb-4">🌐</div>
@@ -300,6 +365,15 @@ export default function MindmapPage() {
                         {globalNodes.map((node) => (
                           <Card
                             key={node.id}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                navigate(`/mindmap/${node.note_id}`)
+                              }
+                            }}
+                            onClick={() => navigate(`/mindmap/${node.note_id}`)}
                             className="hover:shadow-lg transition-all cursor-pointer border-l-4"
                             style={{
                               borderLeftColor: `hsl(var(--primary) / ${node.importance_score})`

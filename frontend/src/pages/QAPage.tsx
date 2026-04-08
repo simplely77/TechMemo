@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -27,7 +28,10 @@ interface Message extends ChatMessageResp {
 }
 
 export default function QAPage() {
+  const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>()
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState<CreateSessionResp[]>([])
+  const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [currentSession, setCurrentSession] = useState<CreateSessionResp | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -52,15 +56,41 @@ export default function QAPage() {
     }
   }, [currentSession])
 
+  // 路由驱动：/qa 无会话；/qa/:sessionId 选中对应会话
+  useEffect(() => {
+    if (!sessionIdParam) {
+      setCurrentSession(null)
+      setMessages([])
+      return
+    }
+    const id = Number(sessionIdParam)
+    if (!Number.isFinite(id)) {
+      navigate("/qa", { replace: true })
+      return
+    }
+    const session = sessions.find((s) => s.id === id)
+    if (session) {
+      setCurrentSession(session)
+    } else if (sessionsLoaded) {
+      navigate("/qa", { replace: true })
+    }
+  }, [sessionIdParam, sessions, sessionsLoaded, navigate])
+
+  // /qa 且无 sessionId 时，默认打开第一个会话
+  useEffect(() => {
+    if (sessionIdParam) return
+    if (!sessionsLoaded || sessions.length === 0) return
+    navigate(`/qa/${sessions[0].id}`, { replace: true })
+  }, [sessionIdParam, sessionsLoaded, sessions, navigate])
+
   const loadSessions = async () => {
     try {
       const res = await getSessions(1, 20)
       setSessions(res.sessions || [])
-      if (res.sessions && res.sessions.length > 0) {
-        setCurrentSession(res.sessions[0])
-      }
     } catch (err) {
       console.error("Failed to load sessions", err)
+    } finally {
+      setSessionsLoaded(true)
     }
   }
 
@@ -77,10 +107,10 @@ export default function QAPage() {
   const handleDeleteSession = async (id: number) => {
     try {
       await deleteSession(id)
-      if (currentSession?.id === id) {
-        setCurrentSession(null)
-      }
       setSessions(prev => prev.filter(s => s.id !== id))
+      if (currentSession?.id === id) {
+        navigate("/qa", { replace: true })
+      }
     } catch (err) {
       console.error("Failed to delete session", err)
     }
@@ -89,9 +119,8 @@ export default function QAPage() {
   const handleCreateSession = async () => {
     try {
       const session = await createSession()
-      setSessions([session, ...sessions])
-      setCurrentSession(session)
-      setMessages([])
+      setSessions(prev => [session, ...prev])
+      navigate(`/qa/${session.id}`)
     } catch (err) {
       console.error("Failed to create session", err)
     }
@@ -213,7 +242,7 @@ const handleSendMessage = async () => {
                       ? "bg-primary text-primary-foreground border-primary"
                       : "hover:bg-accent"
                       }`}
-                    onClick={() => setCurrentSession(session)}
+                    onClick={() => navigate(`/qa/${session.id}`)}
                   >
                     {/* 左边标题 */}
                     <span className="truncate flex-1">

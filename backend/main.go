@@ -41,7 +41,6 @@ func main() {
 		log.Println("使用内存队列（仅开发环境）")
 	}
 	app.AIService.SetQueue(q)
-	app.ChatService.SetQueue(q)
 
 	handler := worker.NewHandler(app.AIService)
 

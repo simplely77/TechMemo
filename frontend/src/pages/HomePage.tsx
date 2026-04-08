@@ -36,7 +36,7 @@ export default function HomePage() {
       title: '笔记管理',
       description: '创建、编辑和管理你的技术笔记',
       icon: '📝',
-      action: () => navigate('/notes')
+      action: () => navigate('/note')
     },
     {
       title: '知识点',

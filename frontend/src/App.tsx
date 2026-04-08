@@ -24,12 +24,12 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route element={<ProtectedRoute/>}>
           <Route path="/home" element={<HomePage/>} />
-          <Route path="/notes" element={<NotePage/>} />
-          <Route path="/knowledge" element={<KnowledgePage/>} />
+          <Route path="/note/:id?" element={<NotePage/>} />
+          <Route path="/knowledge/:id?" element={<KnowledgePage/>} />
           <Route path="/search" element={<SearchPage/>} />
-          <Route path="/qa" element={<QAPage/>} />
+          <Route path="/qa/:sessionId?" element={<QAPage/>} />
           <Route path="/stats" element={<StatsPage/>} />
-          <Route path="/mindmap" element={<MindmapPage/>} />
+          <Route path="/mindmap/:scope?" element={<MindmapPage/>} />
         </Route>
       </Routes>
     </BrowserRouter>

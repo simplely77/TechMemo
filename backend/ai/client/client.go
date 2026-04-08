@@ -344,7 +344,7 @@ func (c *OpenAIClient) ChatWithContext(ctx context.Context, messages []ChatMessa
 				Model:       c.chatModel,
 				Messages:    openaiMessages,
 				Temperature: 0.3,
-				MaxTokens:   300,
+				MaxTokens:   3000,
 			},
 		)
 		if err == nil {
@@ -388,7 +388,7 @@ func (c *OpenAIClient) ChatStream(
 			Model:       c.chatModel,
 			Messages:    openaiMessage,
 			Temperature: 0.3,
-			MaxTokens:   4000,
+			MaxTokens:   3000,
 			Stream:      true,
 		},
 	)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ComponentProps } from "react"
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react"
 import {
     Check,
     Eye,
@@ -50,6 +50,7 @@ import {
     DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useNavigate, useParams } from 'react-router-dom'
 
 type ViewMode = 'view' | 'edit'
 
@@ -89,6 +90,10 @@ function NoteMarkdownBody({ source, emptyHint }: { source: string; emptyHint: st
 }
 
 export default function NotePage() {
+    const { id } = useParams<{ id?: string }>()
+    const navigate = useNavigate()
+    /** 新建笔记后 navigate 到 /note/:id，路由 effect 加载完再进入编辑态 */
+    const openEditAfterLoadForNoteIdRef = useRef<number | null>(null)
     const [categories, setCategories] = useState<Category[]>([])
     const [notes, setNotes] = useState<Note[]>([])
     const [allTags, setAllTags] = useState<Tag[]>([])
@@ -148,14 +153,11 @@ export default function NotePage() {
         })
     }, [])
 
+
     useEffect(() => {
         loadCategories()
         loadAllTags()
     }, [])
-
-    useEffect(() => {
-        if (selectedCategoryId) loadNotes(selectedCategoryId)
-    }, [selectedCategoryId])
 
     // 轮询 AI 处理状态
     useEffect(() => {
@@ -226,7 +228,12 @@ export default function NotePage() {
             const res = await getCategories()
             const cats = res.categories || []
             setCategories(cats)
-            if (cats.length > 0) setSelectedCategoryId(cats[0].id)
+            // /note：默认第一个分类并拉列表；带 :id 时由下方 effect 按路由加载，避免与 selectedCategoryId 抢状态
+            if (cats.length > 0 && !id) {
+                const firstId = cats[0].id
+                setSelectedCategoryId(firstId)
+                await loadNotes(firstId)
+            }
         } catch (err) { console.error(err) }
     }
 
@@ -237,33 +244,87 @@ export default function NotePage() {
         } catch (err) { console.error(err) }
     }
 
-    const loadNotes = async (categoryId: number) => {
+    const loadNotes = async (categoryId: number, opts?: { selectNoteId?: number }) => {
         try {
             const res = await getNotes({ category_id: categoryId })
             const sorted = (res.notes || []).sort((a, b) =>
                 new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
             )
             setNotes(sorted)
-            setSelectedNote(null)
             setVersionPreview(null)
             setViewMode('view')
+            if (opts?.selectNoteId != null) {
+                try {
+                    const full = await getNote(opts.selectNoteId)
+                    setSelectedNote(full)
+                } catch {
+                    setSelectedNote(null)
+                }
+            } else {
+                setSelectedNote(null)
+            }
         } catch (err) { console.error(err) }
     }
 
-    const handleSelectNote = async (note: Note) => {
-        // 如果正在编辑且有未保存的内容，先保存
+    // 路由无 id：URL 为列表态，清空当前笔记选中
+    useEffect(() => {
+        if (id) return
+        setSelectedNote(null)
+        setVersionPreview(null)
+        setViewMode('view')
+        setEditingContent('')
+    }, [id])
+
+    // 路由有 id：按 URL 打开对应笔记（与侧栏点击、外链、前进后退一致）
+    useEffect(() => {
+        if (!id) return
+        const noteId = +id
+        if (!Number.isFinite(noteId)) return
+        let cancelled = false
+        setSelectedNote(null)
+        setVersionPreview(null)
+        ;(async () => {
+            try {
+                const full = await getNote(noteId)
+                if (cancelled) return
+                setSelectedCategoryId(full.category.id)
+                await loadNotes(full.category.id, { selectNoteId: noteId })
+                if (cancelled) return
+                setEditingTagsNoteId(null)
+                if (openEditAfterLoadForNoteIdRef.current === noteId) {
+                    openEditAfterLoadForNoteIdRef.current = null
+                    setViewMode('edit')
+                    setEditingContent(full.content_md)
+                } else {
+                    setEditingContent('')
+                }
+            } catch (err) {
+                console.error(err)
+            }
+        })()
+        return () => {
+            cancelled = true
+        }
+    }, [id])
+
+    // /note 无 id：当前分类下若有笔记，默认打开列表第一篇（与侧栏顺序一致）
+    // 必须确认 notes 已属于当前分类：切换分类时 loadNotes 异步，否则会误用旧列表把路由锁回上一分类
+    useEffect(() => {
+        if (id) return
+        if (selectedCategoryId == null) return
+        if (notes.length === 0) return
+        const first = notes[0]
+        if (first.category.id !== selectedCategoryId) return
+        navigate(`/note/${first.id}`, { replace: true })
+    }, [id, selectedCategoryId, notes, navigate])
+
+    const handleSelectNote = async (noteId: number) => {
         if (viewMode === 'edit' && selectedNote && editingContent !== selectedNote.content_md) {
             await handleUpdateNote()
         }
-
         setVersionPreview(null)
-        try {
-            const full = await getNote(note.id)
-            setSelectedNote(full)
-            setViewMode('view')
-            setEditingTagsNoteId(null)
-            setEditingContent('')
-        } catch (err) { console.error(err) }
+        setEditingTagsNoteId(null)
+        navigate(`/note/${noteId}`)
     }
 
     const handleCreateNote = async () => {
@@ -275,13 +336,10 @@ export default function NotePage() {
                 category_id: selectedCategoryId,
                 tag_ids: []
             })
-            setNotes(prev => [note, ...prev])
-            setSelectedNote(note)
             setNewNoteName('')
             setShowNoteForm(false)
-            // 自动进入编辑模式
-            setEditingContent('')
-            setViewMode('edit')
+            openEditAfterLoadForNoteIdRef.current = note.id
+            navigate(`/note/${note.id}`)
         } catch (err) { console.error(err) }
     }
 
@@ -331,6 +389,7 @@ export default function NotePage() {
             setShowCategoryForm(false)
             setSelectedCategoryId(cat.id)
             setNotes([])
+            navigate('/note')
             setSelectedNote(null)
             setVersionPreview(null)
         } catch (err) { console.error(err) }
@@ -339,9 +398,20 @@ export default function NotePage() {
     const handleDeleteCategory = async (id: number) => {
         try {
             await deleteCategory(id)
-            setCategories(prev => prev.filter(c => c.id !== id))
+            const remaining = categories.filter(c => c.id !== id)
+            setCategories(remaining)
             if (selectedCategoryId === id) {
-                setSelectedCategoryId(categories.find(c => c.id !== id)?.id ?? null)
+                const nextId = remaining[0]?.id ?? null
+                setSelectedCategoryId(nextId)
+                if (nextId != null) {
+                    navigate('/note')
+                    await loadNotes(nextId)
+                } else {
+                    setNotes([])
+                    navigate('/note')
+                    setSelectedNote(null)
+                    setVersionPreview(null)
+                }
             }
         } catch (err) { console.error(err) }
     }
@@ -424,6 +494,7 @@ export default function NotePage() {
             })
             setNotes(prev => prev.filter(n => n.id !== note.id))
             if (selectedNote?.id === note.id) {
+                navigate('/note')
                 setSelectedNote(null)
                 setVersionPreview(null)
                 setViewMode('view')
@@ -583,7 +654,11 @@ export default function NotePage() {
                             <div
                                 key={cat.id}
                                 className={`group ${sidebarRowBase} ${selectedCategoryId === cat.id ? sidebarRowActive : sidebarRowInactive}`}
-                                onClick={() => setSelectedCategoryId(cat.id)}
+                                onClick={() => {
+                                    setSelectedCategoryId(cat.id)
+                                    navigate('/note')
+                                    void loadNotes(cat.id)
+                                }}
                             >
                                 <span className="min-w-0 flex-1 truncate">{cat.name}</span>
                                 <button
@@ -735,7 +810,7 @@ export default function NotePage() {
                                 ) : (
                                     <div
                                         className={`group ${sidebarRowBase} ${selectedNote?.id === note.id ? sidebarRowActive : sidebarRowInactive}`}
-                                        onClick={() => handleSelectNote(note)}
+                                        onClick={() => handleSelectNote(note.id)}
                                     >
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-center justify-between gap-1">
@@ -903,6 +978,9 @@ export default function NotePage() {
                                                                                 selectedNote?.id ===
                                                                                 note.id
                                                                             ) {
+                                                                                navigate(
+                                                                                    '/note'
+                                                                                )
                                                                                 setSelectedNote(
                                                                                     null
                                                                                 )

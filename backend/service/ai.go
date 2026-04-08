@@ -17,7 +17,6 @@ import (
 
 type AIService struct {
 	aiDao    *dao.AIDao
-	chatDao  *dao.ChatDao
 	noteDao  *dao.NoteDao
 	queue    queue.Queue
 	aiClient aiclient.AIClient
@@ -358,14 +357,6 @@ func (a *AIService) handleEmbedding(ctx context.Context, logItem *model.AiProces
 			return
 		}
 		text = kp.Name + "\n" + kp.Description
-	case "chat_message":
-		msg, err := a.chatDao.GetMessageByID(ctx, logItem.TargetID)
-		if err != nil {
-			a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
-			log.Printf("获取聊天消息失败: %v", err)
-			return
-		}
-		text = msg.Content
 	default:
 		a.aiDao.UpdateStatus(ctx, logItem.ID, "failed")
 		return
@@ -537,11 +528,10 @@ func generateGlobalTaskID(userID int64) string {
 	return fmt.Sprintf("global:%d:%s", userID, uuid.NewString())
 }
 
-func NewAIService(aiDao *dao.AIDao, noteDao *dao.NoteDao, chatDao *dao.ChatDao, aiClient aiclient.AIClient) *AIService {
+func NewAIService(aiDao *dao.AIDao, noteDao *dao.NoteDao, aiClient aiclient.AIClient) *AIService {
 	return &AIService{
 		aiDao:    aiDao,
 		noteDao:  noteDao,
-		chatDao:  chatDao,
 		aiClient: aiClient,
 	}
 }

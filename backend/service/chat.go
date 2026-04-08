@@ -8,7 +8,6 @@ import (
 	"unicode"
 
 	aiclient "techmemo/backend/ai/client"
-	"techmemo/backend/ai/queue"
 	"techmemo/backend/common/errors"
 	"techmemo/backend/dao"
 	"techmemo/backend/model"
@@ -17,15 +16,9 @@ import (
 type ChatService struct {
 	chatDao   *dao.ChatDao
 	searchDao *dao.SearchDao
-	aiDao     *dao.AIDao
 	noteDao   *dao.NoteDao
 	kpDao     *dao.KnowledgePointDao
 	aiClient  aiclient.AIClient
-	queue     queue.Queue
-}
-
-func (c *ChatService) SetQueue(q queue.Queue) {
-	c.queue = q
 }
 
 // CreateSession 创建聊天会话
@@ -76,28 +69,9 @@ func (s *ChatService) estimateTokens(text string) int32 {
 	return int32(tokens)
 }
 
-// enqueueMessageEmbedding 将消息向量化任务入队
-func (s *ChatService) enqueueMessageEmbedding(ctx context.Context, messageID int64) error {
-	taskID := fmt.Sprintf("chat_msg_%d", messageID)
-	err := s.aiDao.CreateAILog(ctx, dao.CreateAILogParams{
-		SourceNoteID: 0,
-		TaskID:       taskID,
-		TargetType:   "chat_message",
-		TargetID:     messageID,
-		ProcessType:  "embedding",
-		ModelName:    s.aiClient.GetEmbeddingModelName(),
-		Status:       "pending",
-	})
-	if err != nil {
-		return err
-	}
-	return s.queue.Publish(queue.AITask{TaskID: taskID})
-}
-
 func NewChatService(
 	chatDao *dao.ChatDao,
 	searchDao *dao.SearchDao,
-	aiDao *dao.AIDao,
 	noteDao *dao.NoteDao,
 	kpDao *dao.KnowledgePointDao,
 	aiClient aiclient.AIClient,
@@ -105,7 +79,6 @@ func NewChatService(
 	return &ChatService{
 		chatDao:   chatDao,
 		searchDao: searchDao,
-		aiDao:     aiDao,
 		noteDao:   noteDao,
 		kpDao:     kpDao,
 		aiClient:  aiClient,
@@ -119,20 +92,15 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID int64, 
 		return nil, errors.Forbidden
 	}
 
-	// 保存用户消息
-	userMsg, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
+	if _, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
 		SessionID:  sessionID,
 		UserID:     userID,
 		Role:       "user",
 		Content:    content,
 		TokenCount: s.estimateTokens(content),
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, errors.InternalErr
 	}
-
-	// 异步向量化用户消息
-	s.enqueueMessageEmbedding(ctx, userMsg.ID)
 
 	// 构建 RAG 上下文
 	ragMessages, err := s.buildRAGContext(ctx, content, sessionID, userID)
@@ -158,9 +126,6 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID int64, 
 		return nil, errors.InternalErr
 	}
 
-	// 异步向量化 AI 回复
-	s.enqueueMessageEmbedding(ctx, aiMsg.ID)
-
 	return aiMsg, nil
 }
 
@@ -170,19 +135,16 @@ func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, us
 		return errors.Forbidden
 	}
 
-	userMsg, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
+	if _, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
 		SessionID:  sessionID,
 		UserID:     userID,
 		Role:       "user",
 		Content:    content,
 		TokenCount: s.estimateTokens(content),
-	})
-
-	if err != nil {
+	}); err != nil {
 		log.Println(err)
 		return errors.InternalErr
 	}
-	s.enqueueMessageEmbedding(ctx, userMsg.ID)
 
 	ragMessages, err := s.buildRAGContext(ctx, content, sessionID, userID)
 	if err != nil {
@@ -206,31 +168,40 @@ func (s *ChatService) SendMessageStream(ctx context.Context, sessionID int64, us
 	reply := fullReply.String()
 	log.Println(reply)
 	if reply != "" {
-		aiMsg, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
+		if _, err := s.chatDao.CreateMessage(ctx, dao.CreateMessageParams{
 			SessionID:  sessionID,
 			UserID:     userID,
 			Role:       "assistant",
 			Content:    reply,
 			TokenCount: s.estimateTokens(reply),
-		})
-		if err != nil {
+		}); err != nil {
 			log.Println(err)
 			return errors.InternalErr
 		}
-
-		s.enqueueMessageEmbedding(ctx, aiMsg.ID)
 	}
 	return nil
 }
+
+// ragChatSystemPrompt 置于 RAG 消息最前；须在 truncate 之后 prepend，否则会被 truncateKnowledgeContext 丢掉。
+const ragChatSystemPrompt = `你是 TechMemo 的智能问答助手，帮助用户理解和运用其个人技术笔记库中的内容。
+
+【上下文里各类内容的含义】
+- 以「[笔记]」开头：用户原始笔记。第一行是标题，后面是正文（Markdown）。
+- 以「[知识点]」开头：从笔记中自动抽取的结构化要点；第一行是知识点名称，后面是简短说明。
+- 角色为 user 或 assistant、且没有上述前缀：本会话近期对话，用于理解用户意图与承接话题。
+
+【回答风格】
+- 精炼：先给结论或直接答案，少铺垫、不重复材料原文。
+- 复杂内容用简短分点，每点尽量一句话。
+- 材料不足以回答、或问题需要更多背景时，明确说明，并引导用户补充关键信息（例如具体场景、报错、相关笔记主题）。`
 
 // buildRAGContext 构建 RAG 上下文
 func (s *ChatService) buildRAGContext(ctx context.Context, userQuery string, sessionID, userID int64) ([]aiclient.ChatMessage, error) {
 	const (
 		MaxTokens          = 4000
-		RecentMessageCount = 6
+		RecentMessageCount = 12
 		InitialTopK        = 5
 		MinTopK            = 2
-		ChatThreshold      = 0.3
 		NoteThreshold      = 0.4
 		KnowledgeThreshold = 0.4
 	)
@@ -247,21 +218,21 @@ func (s *ChatService) buildRAGContext(ctx context.Context, userQuery string, ses
 		return nil, err
 	}
 
-	// 语义搜索
+	// 语义搜索（笔记与知识点；聊天消息不再建向量）
 	topK := InitialTopK
-	chatResults, _ := s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "chat_message", userID, topK, ChatThreshold)
 	noteResults, _ := s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "note", userID, topK, NoteThreshold)
 	kpResults, _ := s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "knowledge", userID, topK, KnowledgeThreshold)
 
 	// 合并上下文
-	contextMsgs := s.mergeContext(ctx, recentMsgs, chatResults, noteResults, kpResults, userQuery)
+	contextMsgs := s.mergeContext(ctx, recentMsgs, noteResults, kpResults, userQuery)
 
 	// 动态裁剪
 	totalTokens := s.calculateTotalTokens(contextMsgs)
 	for totalTokens > MaxTokens && topK > MinTopK {
 		topK--
-		chatResults, _ = s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "chat_message", userID, topK, ChatThreshold)
-		contextMsgs = s.mergeContext(ctx, recentMsgs, chatResults, noteResults, kpResults, userQuery)
+		noteResults, _ = s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "note", userID, topK, NoteThreshold)
+		kpResults, _ = s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "knowledge", userID, topK, KnowledgeThreshold)
+		contextMsgs = s.mergeContext(ctx, recentMsgs, noteResults, kpResults, userQuery)
 		totalTokens = s.calculateTotalTokens(contextMsgs)
 	}
 
@@ -270,11 +241,13 @@ func (s *ChatService) buildRAGContext(ctx context.Context, userQuery string, ses
 		contextMsgs = s.truncateKnowledgeContext(contextMsgs, MaxTokens)
 	}
 
-	return contextMsgs, nil
+	return append([]aiclient.ChatMessage{
+		{Role: "system", Content: ragChatSystemPrompt},
+	}, contextMsgs...), nil
 }
 
 // mergeContext 合并上下文
-func (s *ChatService) mergeContext(ctx context.Context, recentMsgs []*model.ChatMessage, chatResults, noteResults, kpResults []dao.SearchResult, userQuery string) []aiclient.ChatMessage {
+func (s *ChatService) mergeContext(ctx context.Context, recentMsgs []*model.ChatMessage, noteResults, kpResults []dao.SearchResult, userQuery string) []aiclient.ChatMessage {
 	var result []aiclient.ChatMessage
 
 	// 知识库上下文
@@ -295,24 +268,6 @@ func (s *ChatService) mergeContext(ctx context.Context, recentMsgs []*model.Chat
 				Role:    "system",
 				Content: fmt.Sprintf("[知识点] %s\n%s", kp.Name, kp.Description),
 			})
-		}
-	}
-
-	// 语义相关的历史消息（去重最近消息）
-	recentIDs := make(map[int64]bool)
-	for _, msg := range recentMsgs {
-		recentIDs[msg.ID] = true
-	}
-
-	for _, cr := range chatResults {
-		if !recentIDs[cr.TargetID] {
-			msg, _ := s.chatDao.GetMessageByID(ctx, cr.TargetID)
-			if msg != nil {
-				result = append(result, aiclient.ChatMessage{
-					Role:    msg.Role,
-					Content: msg.Content,
-				})
-			}
 		}
 	}
 

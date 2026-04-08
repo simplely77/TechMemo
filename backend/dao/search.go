@@ -60,17 +60,6 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 			ORDER BY distance
 			LIMIT $3
 		`
-	case "chat_message":
-		querySQL = `
-			SELECT e.target_id, e.target_type, (e.vector <=> $1) as distance
-			FROM embedding e
-			INNER JOIN chat_message cm ON e.target_id = cm.id
-			WHERE e.target_type = 'chat_message'
-			  AND cm.user_id = $2
-			  AND (e.vector <=> $1) < $4
-			ORDER BY distance
-			LIMIT $3
-		`
 	default:
 		return nil, nil
 	}

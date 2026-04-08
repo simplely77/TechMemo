@@ -49,7 +49,6 @@ func InitApp() *App {
 	aiService := service.NewAIService(
 		aiDao,
 		noteDao,
-		chatDao,
 		aiClient,
 	)
 
@@ -65,7 +64,6 @@ func InitApp() *App {
 	chatService := service.NewChatService(
 		chatDao,
 		searchDao,
-		aiDao,
 		noteDao,
 		knowledgePointDao,
 		aiClient,
