@@ -12,6 +12,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// maxNoteVersionsPerNote caps stored history per note after each new snapshot.
+const maxNoteVersionsPerNote = 20
+
 type NoteService struct {
 	noteDao     *dao.NoteDao
 	categoryDao *dao.CategoryDao
@@ -43,23 +46,39 @@ func (n *NoteService) RestoreNote(ctx context.Context, id int64, versionID int64
 	if version == nil {
 		return nil, errors.NoteVersionNotFound
 	}
+	if version.NoteID != id {
+		return nil, errors.NoteVersionNotFound
+	}
 
 	// 事务：更新 note + 新建版本
 	err = n.q.Transaction(func(tx *query.Query) error {
 		noteDao := dao.NewNoteDao(tx)
 
-		// 更新笔记内容
+		note, err := noteDao.GetNoteByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if note == nil {
+			return errors.NoteNotFound
+		}
+
+		// 正文与当前一致时不重复写入历史
+		if version.ContentMd != note.ContentMd {
+			if err := noteDao.CreateNoteVersion(ctx, &model.NoteVersion{
+				NoteID:    id,
+				ContentMd: version.ContentMd,
+			}); err != nil {
+				return err
+			}
+		}
+
 		if err := noteDao.UpdateNote(ctx, id, dao.UpdateNoteParams{
 			ContentMD: &version.ContentMd,
 		}); err != nil {
 			return err
 		}
 
-		// 新建一条历史版本（记录回档行为）
-		if err := noteDao.CreateNoteVersion(ctx, &model.NoteVersion{
-			NoteID:    id,
-			ContentMd: version.ContentMd,
-		}); err != nil {
+		if err := noteDao.TrimNoteVersions(ctx, id, maxNoteVersionsPerNote); err != nil {
 			return err
 		}
 
@@ -67,6 +86,9 @@ func (n *NoteService) RestoreNote(ctx context.Context, id int64, versionID int64
 	})
 
 	if err != nil {
+		if err == errors.NoteNotFound {
+			return nil, errors.NoteNotFound
+		}
 		return nil, errors.InternalErr
 	}
 
@@ -207,16 +229,16 @@ func (n *NoteService) UpdateNote(ctx context.Context, id int64, req *dto.UpdateN
 	err := n.q.Transaction(func(tx *query.Query) error {
 		noteDao := dao.NewNoteDao(tx)
 
-		exists, err := noteDao.CheckNoteExistsByID(ctx, id)
+		note, err := noteDao.GetNoteByID(ctx, id)
 		if err != nil {
 			return errors.InternalErr
 		}
-		if !exists {
+		if note == nil {
 			return errors.NoteNotFound
 		}
 
-		// 只有当 ContentMD 不为空时才创建版本历史
-		if req.ContentMD != nil {
+		// 仅当正文相对当前有变更时写入版本，并只保留最近 maxNoteVersionsPerNote 条
+		if req.ContentMD != nil && *req.ContentMD != note.ContentMd {
 			noteVersion := &model.NoteVersion{
 				NoteID:    id,
 				ContentMd: *req.ContentMD,
@@ -231,6 +253,10 @@ func (n *NoteService) UpdateNote(ctx context.Context, id int64, req *dto.UpdateN
 			ContentMD:  req.ContentMD,
 			CategoryID: req.CategoryID,
 		}); err != nil {
+			return errors.InternalErr
+		}
+
+		if err := noteDao.TrimNoteVersions(ctx, id, maxNoteVersionsPerNote); err != nil {
 			return errors.InternalErr
 		}
 

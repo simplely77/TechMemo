@@ -204,6 +204,42 @@ func (n *NoteDao) CreateNoteVersion(ctx context.Context, noteVersion *model.Note
 		Create(noteVersion)
 }
 
+// TrimNoteVersions deletes oldest rows until at most keep versions remain for the note.
+func (n *NoteDao) TrimNoteVersions(ctx context.Context, noteID int64, keep int) error {
+	if keep < 1 {
+		return nil
+	}
+	count, err := n.q.NoteVersion.
+		WithContext(ctx).
+		Where(n.q.NoteVersion.NoteID.Eq(noteID)).
+		Count()
+	if err != nil {
+		return err
+	}
+	excess := int(count) - keep
+	if excess <= 0 {
+		return nil
+	}
+	old, err := n.q.NoteVersion.
+		WithContext(ctx).
+		Where(n.q.NoteVersion.NoteID.Eq(noteID)).
+		Order(n.q.NoteVersion.CreatedAt.Asc(), n.q.NoteVersion.ID.Asc()).
+		Limit(excess).
+		Find()
+	if err != nil {
+		return err
+	}
+	if len(old) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(old))
+	for i, v := range old {
+		ids[i] = v.ID
+	}
+	_, err = n.q.NoteVersion.WithContext(ctx).Where(n.q.NoteVersion.ID.In(ids...)).Delete()
+	return err
+}
+
 func (n *NoteDao) CreateNoteAndTags(ctx context.Context, noteTags []*model.NoteTag) error {
 	return n.q.NoteTag.
 		WithContext(ctx).

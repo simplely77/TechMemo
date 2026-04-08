@@ -1,7 +1,32 @@
-import { useEffect, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import { useCallback, useEffect, useState, type ComponentProps } from "react"
+import {
+    Check,
+    Eye,
+    Loader2,
+    MoreVertical,
+    PanelLeftClose,
+    PanelLeftOpen,
+    Pencil,
+    Plus,
+    Sparkles,
+    Tag as TagIcon,
+    Trash2,
+    X,
+} from "lucide-react"
 import { getCategories, createCategory, deleteCategory, type Category } from "@/services/categoryService"
-import { getNotes, getNote, createNote, updateNote, deleteNote, updateNoteTags, type Note, type NoteTag } from "@/services/noteService"
+import {
+    getNotes,
+    getNote,
+    createNote,
+    updateNote,
+    deleteNote,
+    updateNoteTags,
+    getNoteVersions,
+    restoreNote,
+    type Note,
+    type NoteTag,
+    type NoteVersion,
+} from "@/services/noteService"
 import { getTags, createTag, deleteTag, type Tag } from "@/services/tagService"
 import { processNoteAI, getNoteAIStatus } from "@/services/aiService"
 import ReactMarkdown from 'react-markdown'
@@ -15,8 +40,53 @@ import rehypeAutolinkHeadings from 'rehype-autolink-headings'
 import rehypeRaw from 'rehype-raw'
 import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github-dark.css'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 type ViewMode = 'view' | 'edit'
+
+/** Obsidian 式侧栏行：左侧紫条 + 浅底，避免整块 primary 填充 */
+const sidebarRowBase =
+    'flex items-center justify-between gap-1 border-l-2 border-transparent pl-2 pr-1.5 py-1 text-[13px] leading-tight cursor-pointer rounded-r-sm transition-colors'
+const sidebarRowInactive = 'text-sidebar-foreground hover:bg-sidebar-accent/80'
+const sidebarRowActive =
+    'bg-sidebar-accent text-sidebar-foreground border-l-violet-500 dark:border-l-violet-400'
+
+const obsidianInput =
+    'flex-1 rounded-sm border border-sidebar-border bg-muted/40 px-2 py-1 text-[12px] text-sidebar-foreground placeholder:text-muted-foreground focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30 dark:focus:border-violet-400/50 dark:focus:ring-violet-400/25'
+
+const NOTE_SIDEBAR_COLLAPSED_KEY = 'techmemo-note-sidebar-collapsed'
+
+const markdownRemarkPlugins = [remarkGfm, remarkMath, remarkBreaks]
+const markdownRehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = [
+    rehypeRaw,
+    rehypeKatex,
+    rehypeHighlight,
+    rehypeSlug,
+    [rehypeAutolinkHeadings, { behavior: 'wrap' }],
+]
+
+function NoteMarkdownBody({ source, emptyHint }: { source: string; emptyHint: string }) {
+    if (!source.trim()) {
+        return <div className="text-sm italic text-muted-foreground">{emptyHint}</div>
+    }
+    return (
+        <ReactMarkdown
+            remarkPlugins={markdownRemarkPlugins}
+            rehypePlugins={markdownRehypePlugins}
+        >
+            {source}
+        </ReactMarkdown>
+    )
+}
 
 export default function NotePage() {
     const [categories, setCategories] = useState<Category[]>([])
@@ -44,6 +114,39 @@ export default function NotePage() {
     // AI 处理状态
     const [aiProcessing, setAiProcessing] = useState(false)
     const [aiStatus, setAiStatus] = useState<string>('')
+    const [versionsSubNoteId, setVersionsSubNoteId] = useState<number | null>(null)
+    const [versionsList, setVersionsList] = useState<NoteVersion[]>([])
+    const [versionsLoading, setVersionsLoading] = useState(false)
+    /** 仅预览：正文区只读展示该版本的 Markdown，不参与编辑/保存 */
+    const [versionPreview, setVersionPreview] = useState<NoteVersion | null>(null)
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+        try {
+            return localStorage.getItem(NOTE_SIDEBAR_COLLAPSED_KEY) === '1'
+        } catch {
+            return false
+        }
+    })
+
+    const persistSidebarCollapsed = useCallback((collapsed: boolean) => {
+        setSidebarCollapsed(collapsed)
+        try {
+            localStorage.setItem(NOTE_SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0')
+        } catch {
+            /* ignore */
+        }
+    }, [])
+
+    const toggleSidebarCollapsed = useCallback(() => {
+        setSidebarCollapsed(prev => {
+            const next = !prev
+            try {
+                localStorage.setItem(NOTE_SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+            } catch {
+                /* ignore */
+            }
+            return next
+        })
+    }, [])
 
     useEffect(() => {
         loadCategories()
@@ -102,6 +205,22 @@ export default function NotePage() {
         return () => window.removeEventListener('keydown', handleKeyDown)
     }, [viewMode, editingContent, selectedNote])
 
+    // ⌘B / Ctrl+B：折叠或展开侧栏（与 VS Code 一致）
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+                e.preventDefault()
+                toggleSidebarCollapsed()
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [toggleSidebarCollapsed])
+
+    useEffect(() => {
+        if (selectedNote == null) setVersionPreview(null)
+    }, [selectedNote?.id])
+
     const loadCategories = async () => {
         try {
             const res = await getCategories()
@@ -126,6 +245,7 @@ export default function NotePage() {
             )
             setNotes(sorted)
             setSelectedNote(null)
+            setVersionPreview(null)
             setViewMode('view')
         } catch (err) { console.error(err) }
     }
@@ -136,6 +256,7 @@ export default function NotePage() {
             await handleUpdateNote()
         }
 
+        setVersionPreview(null)
         try {
             const full = await getNote(note.id)
             setSelectedNote(full)
@@ -211,6 +332,7 @@ export default function NotePage() {
             setSelectedCategoryId(cat.id)
             setNotes([])
             setSelectedNote(null)
+            setVersionPreview(null)
         } catch (err) { console.error(err) }
     }
 
@@ -278,6 +400,82 @@ export default function NotePage() {
         )
     }
 
+    const loadVersionsForSubmenu = async (noteId: number) => {
+        setVersionsSubNoteId(noteId)
+        setVersionsLoading(true)
+        setVersionsList([])
+        try {
+            const res = await getNoteVersions(noteId)
+            setVersionsList(res.versions ?? [])
+        } catch {
+            setVersionsList([])
+        } finally {
+            setVersionsLoading(false)
+        }
+    }
+
+    const handleMoveNoteToCategory = async (note: Note, categoryId: number) => {
+        if (note.category.id === categoryId) return
+        try {
+            await updateNote(note.id, {
+                title: note.title,
+                content_md: note.content_md,
+                category_id: categoryId,
+            })
+            setNotes(prev => prev.filter(n => n.id !== note.id))
+            if (selectedNote?.id === note.id) {
+                setSelectedNote(null)
+                setVersionPreview(null)
+                setViewMode('view')
+                setEditingContent('')
+            }
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
+    const handleRestoreNoteVersion = async (note: Note, versionId: number) => {
+        if (
+            selectedNote?.id === note.id &&
+            viewMode === 'edit' &&
+            editingContent !== selectedNote.content_md
+        ) {
+            if (!confirm('当前有未保存修改，恢复历史版本将丢弃这些修改，是否继续？')) return
+        }
+        try {
+            const restored = await restoreNote(note.id, versionId)
+            setNotes(prev => prev.map(n => (n.id === note.id ? restored : n)))
+            if (selectedNote?.id === note.id) {
+                setSelectedNote(restored)
+                setEditingContent(restored.content_md)
+                setViewMode('view')
+                setVersionPreview(null)
+            }
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
+    const handlePreviewNoteVersion = async (note: Note, v: NoteVersion) => {
+        if (
+            selectedNote?.id === note.id &&
+            viewMode === 'edit' &&
+            editingContent !== selectedNote.content_md
+        ) {
+            if (!confirm('当前有未保存修改，预览将离开编辑区且不会自动保存，是否继续？')) return
+        }
+        try {
+            const full = await getNote(note.id)
+            setSelectedNote(full)
+            setVersionPreview(v)
+            setViewMode('view')
+            setEditingTagsNoteId(null)
+            setEditingContent('')
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
     // AI 处理笔记
     const handleProcessAI = async () => {
         if (!selectedNote) return
@@ -302,6 +500,7 @@ export default function NotePage() {
 
     const startEdit = () => {
         if (!selectedNote) return
+        setVersionPreview(null)
         setEditingContent(selectedNote.content_md)
         setViewMode('edit')
     }
@@ -316,20 +515,52 @@ export default function NotePage() {
         }
     }
 
+    /** 正文相对服务器是否有未保存修改（VS Code「脏」状态） */
+    const isNoteDirty =
+        viewMode === 'edit' &&
+        selectedNote !== null &&
+        editingContent !== selectedNote.content_md
+
     return (
-        <div className="flex h-screen w-full overflow-hidden">
-            {/* 左侧边栏 */}
-            <div className="w-64 min-w-[256px] border-r flex flex-col bg-background">
+        <div className="flex h-screen w-full overflow-hidden bg-background">
+            {/* 左侧边栏 — 可折叠 */}
+            <div
+                className={`flex shrink-0 flex-col overflow-hidden border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,min-width] duration-200 ease-out ${
+                    sidebarCollapsed
+                        ? 'w-0 min-w-0 border-r-0'
+                        : 'w-[272px] min-w-[272px] border-r'
+                }`}
+            >
+                <div className="flex h-9 shrink-0 items-center justify-end border-b border-sidebar-border px-2">
+                    <button
+                        type="button"
+                        onClick={() => persistSidebarCollapsed(true)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                        title="收起侧栏 (⌘B / Ctrl+B)"
+                        aria-label="收起侧栏"
+                    >
+                        <PanelLeftClose className="h-4 w-4" />
+                    </button>
+                </div>
                 {/* 分类区 */}
-                <div className="p-3 border-b">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">分类</span>
-                        <button onClick={() => setShowCategoryForm(v => !v)} className="text-sm text-primary leading-none">+</button>
+                <div className="border-b border-sidebar-border p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            分类
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setShowCategoryForm(v => !v)}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-sidebar-accent hover:text-violet-600 dark:hover:text-violet-400"
+                            aria-label="新建分类"
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                        </button>
                     </div>
                     {showCategoryForm && (
-                        <div className="flex gap-1 mb-2">
+                        <div className="mb-2 flex gap-1">
                             <input
-                                className="flex-1 text-xs border rounded px-1.5 py-1"
+                                className={obsidianInput}
                                 placeholder="分类名"
                                 value={newCategoryName}
                                 onChange={e => setNewCategoryName(e.target.value)}
@@ -339,37 +570,54 @@ export default function NotePage() {
                                 }}
                                 autoFocus
                             />
-                            <button onClick={handleCreateCategory} className="text-xs text-primary">✓</button>
-                            <button onClick={() => { setShowCategoryForm(false); setNewCategoryName('') }} className="text-xs text-muted-foreground">✕</button>
+                            <button type="button" onClick={handleCreateCategory} className="rounded-sm p-1 text-violet-600 hover:bg-sidebar-accent dark:text-violet-400" aria-label="确认">
+                                <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button" onClick={() => { setShowCategoryForm(false); setNewCategoryName('') }} className="rounded-sm p-1 text-muted-foreground hover:bg-sidebar-accent" aria-label="取消">
+                                <X className="h-3.5 w-3.5" />
+                            </button>
                         </div>
                     )}
-                    <div className="space-y-0.5">
+                    <div className="space-y-px">
                         {categories.map(cat => (
                             <div
                                 key={cat.id}
-                                className={`flex items-center justify-between px-2 py-1 rounded text-sm cursor-pointer group ${selectedCategoryId === cat.id ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
+                                className={`group ${sidebarRowBase} ${selectedCategoryId === cat.id ? sidebarRowActive : sidebarRowInactive}`}
                                 onClick={() => setSelectedCategoryId(cat.id)}
                             >
-                                <span className="truncate">{cat.name}</span>
+                                <span className="min-w-0 flex-1 truncate">{cat.name}</span>
                                 <button
-                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0 ml-1"
+                                    type="button"
+                                    className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
                                     onClick={e => { e.stopPropagation(); handleDeleteCategory(cat.id) }}
-                                >✕</button>
+                                    aria-label="删除分类"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
                             </div>
                         ))}
                     </div>
                 </div>
 
                 {/* 标签区 */}
-                <div className="p-3 border-b">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">标签</span>
-                        <button onClick={() => setShowTagForm(v => !v)} className="text-sm text-primary leading-none">+</button>
+                <div className="border-b border-sidebar-border p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            标签
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setShowTagForm(v => !v)}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-sidebar-accent hover:text-violet-600 dark:hover:text-violet-400"
+                            aria-label="新建标签"
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                        </button>
                     </div>
                     {showTagForm && (
-                        <div className="flex gap-1 mb-2">
+                        <div className="mb-2 flex gap-1">
                             <input
-                                className="flex-1 text-xs border rounded px-1.5 py-1"
+                                className={obsidianInput}
                                 placeholder="标签名"
                                 value={newTagNameInSidebar}
                                 onChange={e => setNewTagNameInSidebar(e.target.value)}
@@ -379,49 +627,72 @@ export default function NotePage() {
                                 }}
                                 autoFocus
                             />
-                            <button onClick={handleCreateTagInSidebar} className="text-xs text-primary">✓</button>
-                            <button onClick={() => { setShowTagForm(false); setNewTagNameInSidebar('') }} className="text-xs text-muted-foreground">✕</button>
+                            <button type="button" onClick={handleCreateTagInSidebar} className="rounded-sm p-1 text-violet-600 hover:bg-sidebar-accent dark:text-violet-400" aria-label="确认">
+                                <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button" onClick={() => { setShowTagForm(false); setNewTagNameInSidebar('') }} className="rounded-sm p-1 text-muted-foreground hover:bg-sidebar-accent" aria-label="取消">
+                                <X className="h-3.5 w-3.5" />
+                            </button>
                         </div>
                     )}
                     <div className="flex flex-wrap gap-1">
                         {allTags.map(tag => (
                             <div
                                 key={tag.id}
-                                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs cursor-pointer group transition-colors ${selectedTagIds.includes(tag.id) ? 'bg-primary text-primary-foreground' : 'bg-accent hover:bg-accent/60'}`}
+                                className={`group flex cursor-pointer items-center gap-0.5 rounded-sm border px-1.5 py-0.5 text-[11px] transition-colors ${selectedTagIds.includes(tag.id)
+                                    ? 'border-violet-500/50 bg-violet-500/10 text-foreground dark:border-violet-400/40 dark:bg-violet-400/10'
+                                    : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground'
+                                    }`}
                                 onClick={() => handleToggleTagFilter(tag.id)}
                             >
-                                <span className="truncate">{tag.name}</span>
+                                <span className="max-w-28 truncate">{tag.name}</span>
                                 <button
-                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0"
+                                    type="button"
+                                    className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
                                     onClick={e => { e.stopPropagation(); handleDeleteTag(tag.id) }}
-                                >✕</button>
+                                    aria-label="删除标签"
+                                >
+                                    <X className="h-2.5 w-2.5" />
+                                </button>
                             </div>
                         ))}
                         {allTags.length === 0 && (
-                            <p className="text-xs text-muted-foreground py-1">暂无标签</p>
+                            <p className="py-1 text-[12px] text-muted-foreground">暂无标签</p>
                         )}
                     </div>
                     {selectedTagIds.length > 0 && (
                         <div className="mt-2 flex items-center justify-between">
-                            <span className="text-[10px] text-muted-foreground">已选 {selectedTagIds.length} 个标签</span>
+                            <span className="text-[10px] text-muted-foreground">已选 {selectedTagIds.length} 个</span>
                             <button
+                                type="button"
                                 onClick={() => setSelectedTagIds([])}
-                                className="text-[10px] text-primary"
-                            >清除筛选</button>
+                                className="text-[10px] text-violet-600 hover:underline dark:text-violet-400"
+                            >
+                                清除筛选
+                            </button>
                         </div>
                     )}
                 </div>
 
                 {/* 笔记列表 */}
                 <div className="flex-1 overflow-y-auto p-3">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">笔记</span>
-                        <button onClick={() => setShowNoteForm(v => !v)} className="text-sm text-primary leading-none">+</button>
+                    <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            笔记
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setShowNoteForm(v => !v)}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-sidebar-accent hover:text-violet-600 dark:hover:text-violet-400"
+                            aria-label="新建笔记"
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                        </button>
                     </div>
                     {showNoteForm && (
-                        <div className="flex gap-1 mb-2">
+                        <div className="mb-2 flex gap-1">
                             <input
-                                className="flex-1 text-xs border rounded px-1.5 py-1"
+                                className={obsidianInput}
                                 placeholder="笔记标题"
                                 value={newNoteName}
                                 onChange={e => setNewNoteName(e.target.value)}
@@ -431,17 +702,21 @@ export default function NotePage() {
                                 }}
                                 autoFocus
                             />
-                            <button onClick={handleCreateNote} className="text-xs text-primary">✓</button>
-                            <button onClick={() => { setShowNoteForm(false); setNewNoteName('') }} className="text-xs text-muted-foreground">✕</button>
+                            <button type="button" onClick={handleCreateNote} className="rounded-sm p-1 text-violet-600 hover:bg-sidebar-accent dark:text-violet-400" aria-label="确认">
+                                <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button" onClick={() => { setShowNoteForm(false); setNewNoteName('') }} className="rounded-sm p-1 text-muted-foreground hover:bg-sidebar-accent" aria-label="取消">
+                                <X className="h-3.5 w-3.5" />
+                            </button>
                         </div>
                     )}
                     <div className="space-y-1">
                         {filteredNotes.map(note => (
                             <div key={note.id} className="relative">
                                 {renamingNoteId === note.id ? (
-                                    <div className="flex gap-1 px-2 py-1.5">
+                                    <div className="flex gap-1 py-1 pl-1">
                                         <input
-                                            className="flex-1 text-xs border rounded px-1.5 py-0.5"
+                                            className={obsidianInput}
                                             value={renamingTitle}
                                             onChange={e => setRenamingTitle(e.target.value)}
                                             onKeyDown={e => {
@@ -450,87 +725,236 @@ export default function NotePage() {
                                             }}
                                             autoFocus
                                         />
-                                        <button onClick={() => handleRenameNote(note, renamingTitle)} className="text-xs text-primary">✓</button>
-                                        <button onClick={() => { setRenamingNoteId(null); setRenamingTitle('') }} className="text-xs text-muted-foreground">✕</button>
+                                        <button type="button" onClick={() => handleRenameNote(note, renamingTitle)} className="rounded-sm p-1 text-violet-600 hover:bg-sidebar-accent dark:text-violet-400" aria-label="确认">
+                                            <Check className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button type="button" onClick={() => { setRenamingNoteId(null); setRenamingTitle('') }} className="rounded-sm p-1 text-muted-foreground hover:bg-sidebar-accent" aria-label="取消">
+                                            <X className="h-3.5 w-3.5" />
+                                        </button>
                                     </div>
                                 ) : (
                                     <div
-                                        className={`px-2 py-1.5 rounded cursor-pointer group ${selectedNote?.id === note.id ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
+                                        className={`group ${sidebarRowBase} ${selectedNote?.id === note.id ? sidebarRowActive : sidebarRowInactive}`}
                                         onClick={() => handleSelectNote(note)}
                                     >
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs truncate flex-1">{note.title}</span>
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0 px-1"
-                                                    onClick={e => {
-                                                        e.stopPropagation()
-                                                        setRenamingNoteId(note.id)
-                                                        setRenamingTitle(note.title)
-                                                    }}
-                                                    title="重命名"
-                                                >
-                                                    ✏️
-                                                </button>
-                                                <button
-                                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0 px-1"
-                                                    onClick={e => {
-                                                        e.stopPropagation()
-                                                        setEditingTagsNoteId(editingTagsNoteId === note.id ? null : note.id)
-                                                    }}
-                                                    title="编辑标签"
-                                                >
-                                                    🏷
-                                                </button>
-                                                <button
-                                                    className="opacity-0 group-hover:opacity-100 text-xs shrink-0 px-1"
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation()
-                                                        if (confirm('确定删除这篇笔记吗？')) {
-                                                            try {
-                                                                await deleteNote(note.id)
-                                                                setNotes(prev => prev.filter(n => n.id !== note.id))
-                                                                if (selectedNote?.id === note.id) {
-                                                                    setSelectedNote(null)
-                                                                }
-                                                            } catch (err) {
-                                                                console.error(err)
-                                                            }
-                                                        }
-                                                    }}
-                                                    title="删除笔记"
-                                                >
-                                                    🗑
-                                                </button>
-                                            </div>
-                                        </div>
-                                        {/* 标签展示（最多2个） */}
-                                        {note.tags.length > 0 && (
-                                            <div className="flex gap-1 mt-1 flex-wrap">
-                                                {note.tags.slice(0, 2).map(tag => (
-                                                    <span
-                                                        key={tag.id}
-                                                        className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedNote?.id === note.id ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-accent text-muted-foreground'}`}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center justify-between gap-1">
+                                                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                                    {selectedNote?.id === note.id && isNoteDirty && (
+                                                        <span
+                                                            className="h-2 w-2 shrink-0 rounded-full bg-violet-500 dark:bg-violet-400"
+                                                            title="未保存的更改"
+                                                            aria-hidden
+                                                        />
+                                                    )}
+                                                    <span className="truncate">{note.title}</span>
+                                                </span>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-sm p-0.5 text-muted-foreground opacity-0 hover:bg-sidebar-accent hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+                                                            title="笔记操作"
+                                                            aria-label="笔记操作"
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <MoreVertical className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent
+                                                        align="end"
+                                                        className="w-52"
+                                                        onClick={e => e.stopPropagation()}
                                                     >
-                                                        {tag.name}
-                                                    </span>
-                                                ))}
-                                                {note.tags.length > 2 && (
-                                                    <span className="text-[10px] text-muted-foreground">+{note.tags.length - 2}</span>
-                                                )}
+                                                        <DropdownMenuItem
+                                                            onSelect={() => {
+                                                                setRenamingNoteId(note.id)
+                                                                setRenamingTitle(note.title)
+                                                            }}
+                                                        >
+                                                            <Pencil className="h-3.5 w-3.5" />
+                                                            重命名
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onSelect={() =>
+                                                                setEditingTagsNoteId(
+                                                                    editingTagsNoteId === note.id ? null : note.id
+                                                                )
+                                                            }
+                                                        >
+                                                            <TagIcon className="h-3.5 w-3.5" />
+                                                            编辑标签
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuSub>
+                                                            <DropdownMenuSubTrigger>
+                                                                移动到分类…
+                                                            </DropdownMenuSubTrigger>
+                                                            <DropdownMenuSubContent className="max-h-56 overflow-y-auto">
+                                                                {categories.filter(c => c.id !== note.category.id)
+                                                                    .length === 0 ? (
+                                                                    <DropdownMenuItem disabled>
+                                                                        暂无其它分类
+                                                                    </DropdownMenuItem>
+                                                                ) : (
+                                                                    categories
+                                                                        .filter(c => c.id !== note.category.id)
+                                                                        .map(cat => (
+                                                                            <DropdownMenuItem
+                                                                                key={cat.id}
+                                                                                onSelect={() => {
+                                                                                    void handleMoveNoteToCategory(
+                                                                                        note,
+                                                                                        cat.id
+                                                                                    )
+                                                                                }}
+                                                                            >
+                                                                                {cat.name}
+                                                                            </DropdownMenuItem>
+                                                                        ))
+                                                                )}
+                                                            </DropdownMenuSubContent>
+                                                        </DropdownMenuSub>
+                                                        <DropdownMenuSub
+                                                            onOpenChange={open => {
+                                                                if (open) void loadVersionsForSubmenu(note.id)
+                                                            }}
+                                                        >
+                                                            <DropdownMenuSubTrigger>
+                                                                恢复历史版本…
+                                                            </DropdownMenuSubTrigger>
+                                                            <DropdownMenuSubContent className="max-h-56 w-[min(18rem,calc(100vw-2rem))] overflow-y-auto">
+                                                                {versionsLoading &&
+                                                                versionsSubNoteId === note.id ? (
+                                                                    <DropdownMenuItem disabled>
+                                                                        加载中…
+                                                                    </DropdownMenuItem>
+                                                                ) : versionsSubNoteId === note.id &&
+                                                                  versionsList.length === 0 ? (
+                                                                    <DropdownMenuItem disabled>
+                                                                        暂无历史版本
+                                                                    </DropdownMenuItem>
+                                                                ) : (
+                                                                    versionsSubNoteId === note.id &&
+                                                                    versionsList.map(v => (
+                                                                        <DropdownMenuItem
+                                                                            key={v.id}
+                                                                            className="flex items-center gap-1.5"
+                                                                            onSelect={() => {
+                                                                                void handleRestoreNoteVersion(
+                                                                                    note,
+                                                                                    v.id
+                                                                                )
+                                                                            }}
+                                                                        >
+                                                                            <span className="min-w-0 flex-1 truncate">
+                                                                                {new Date(
+                                                                                    v.created_at
+                                                                                ).toLocaleString()}
+                                                                            </span>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="inline-flex shrink-0 rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:pointer-events-auto"
+                                                                                title="预览此版本"
+                                                                                aria-label="预览此版本"
+                                                                                onClick={e => {
+                                                                                    e.stopPropagation()
+                                                                                    void handlePreviewNoteVersion(
+                                                                                        note,
+                                                                                        v
+                                                                                    )
+                                                                                }}
+                                                                                onPointerDown={e =>
+                                                                                    e.stopPropagation()
+                                                                                }
+                                                                                onPointerUp={e =>
+                                                                                    e.stopPropagation()
+                                                                                }
+                                                                            >
+                                                                                <Eye className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                        </DropdownMenuItem>
+                                                                    ))
+                                                                )}
+                                                            </DropdownMenuSubContent>
+                                                        </DropdownMenuSub>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem
+                                                            variant="destructive"
+                                                            onSelect={() => {
+                                                                if (
+                                                                    confirm(
+                                                                        '确定删除这篇笔记吗？'
+                                                                    )
+                                                                ) {
+                                                                    void (async () => {
+                                                                        try {
+                                                                            await deleteNote(
+                                                                                note.id
+                                                                            )
+                                                                            setNotes(prev =>
+                                                                                prev.filter(
+                                                                                    n =>
+                                                                                        n.id !==
+                                                                                        note.id
+                                                                                )
+                                                                            )
+                                                                            if (
+                                                                                selectedNote?.id ===
+                                                                                note.id
+                                                                            ) {
+                                                                                setSelectedNote(
+                                                                                    null
+                                                                                )
+                                                                            }
+                                                                        } catch (err) {
+                                                                            console.error(
+                                                                                err
+                                                                            )
+                                                                        }
+                                                                    })()
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                            删除笔记
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
-                                        )}
+                                            {note.tags.length > 0 && (
+                                                <div className="mt-1 flex flex-wrap gap-0.5">
+                                                    {note.tags.slice(0, 2).map(tag => (
+                                                        <span
+                                                            key={tag.id}
+                                                            className={`rounded-sm px-1 py-px text-[10px] ${selectedNote?.id === note.id
+                                                                ? 'bg-violet-500/15 text-foreground dark:bg-violet-400/15'
+                                                                : 'bg-muted/60 text-muted-foreground'
+                                                                }`}
+                                                        >
+                                                            {tag.name}
+                                                        </span>
+                                                    ))}
+                                                    {note.tags.length > 2 && (
+                                                        <span className="text-[10px] text-muted-foreground">+{note.tags.length - 2}</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
-                                {/* 标签编辑弹出层 */}
                                 {editingTagsNoteId === note.id && (
-                                    <div className="absolute left-0 right-0 z-20 mt-1 bg-background border rounded shadow-lg p-2">
-                                        <div className="flex flex-wrap gap-1 mb-2">
+                                    <div className="absolute left-0 right-0 z-20 mt-1 rounded-sm border border-sidebar-border bg-popover p-2 shadow-md">
+                                        <div className="mb-2 flex flex-wrap gap-1">
                                             {allTags.map(tag => (
                                                 <button
+                                                    type="button"
                                                     key={tag.id}
                                                     onClick={() => handleToggleNoteTag(note, tag.id)}
-                                                    className={`text-[10px] px-1.5 py-0.5 rounded-full border transition-colors ${note.tags.some(t => t.id === tag.id) ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-accent'}`}
+                                                    className={`rounded-sm border px-1.5 py-0.5 text-[10px] transition-colors ${note.tags.some(t => t.id === tag.id)
+                                                        ? 'border-violet-500/50 bg-violet-500/10 text-foreground dark:border-violet-400/40'
+                                                        : 'border-transparent bg-muted/40 text-muted-foreground hover:bg-sidebar-accent'
+                                                        }`}
                                                 >
                                                     {tag.name}
                                                 </button>
@@ -538,8 +962,8 @@ export default function NotePage() {
                                         </div>
                                         <div className="flex gap-1">
                                             <input
-                                                className="flex-1 text-[10px] border rounded px-1.5 py-0.5"
-                                                placeholder="新建标签..."
+                                                className={obsidianInput}
+                                                placeholder="新建标签…"
                                                 value={newTagName}
                                                 onChange={e => setNewTagName(e.target.value)}
                                                 onKeyDown={e => {
@@ -547,113 +971,175 @@ export default function NotePage() {
                                                     if (e.key === 'Escape') setEditingTagsNoteId(null)
                                                 }}
                                             />
-                                            <button onClick={() => handleCreateAndAddTag(note)} className="text-[10px] text-primary">+</button>
-                                            <button onClick={() => setEditingTagsNoteId(null)} className="text-[10px] text-muted-foreground">✕</button>
+                                            <button type="button" onClick={() => handleCreateAndAddTag(note)} className="rounded-sm p-1 text-violet-600 hover:bg-sidebar-accent dark:text-violet-400" aria-label="添加">
+                                                <Plus className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button type="button" onClick={() => setEditingTagsNoteId(null)} className="rounded-sm p-1 text-muted-foreground hover:bg-sidebar-accent" aria-label="关闭">
+                                                <X className="h-3.5 w-3.5" />
+                                            </button>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         ))}
                         {filteredNotes.length === 0 && notes.length > 0 && (
-                            <p className="text-xs text-muted-foreground py-2">没有符合筛选条件的笔记</p>
+                            <p className="py-2 text-[12px] text-muted-foreground">没有符合筛选条件的笔记</p>
                         )}
                         {notes.length === 0 && (
-                            <p className="text-xs text-muted-foreground py-2">暂无笔记</p>
+                            <p className="py-2 text-[12px] text-muted-foreground">暂无笔记</p>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* 右侧内容区 */}
-            <div className="flex-1 flex flex-col overflow-hidden relative p-6">
+            {/* 右侧：画布区（扁平、无重阴影卡片） */}
+            <div className="relative flex flex-1 flex-col overflow-hidden">
+                {sidebarCollapsed && (
+                    <button
+                        type="button"
+                        onClick={() => persistSidebarCollapsed(false)}
+                        className="absolute left-0 top-12 z-50 inline-flex h-9 w-7 items-center justify-center rounded-r-md border border-l-0 border-border bg-muted/80 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-muted hover:text-foreground"
+                        title="展开侧栏 (⌘B / Ctrl+B)"
+                        aria-label="展开侧栏"
+                    >
+                        <PanelLeftOpen className="h-4 w-4" />
+                    </button>
+                )}
                 {selectedNote ? (
                     <>
-                        {/* 右上角按钮组 - 固定在右侧内容区 */}
-                        <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
-                            {/* 编辑/预览切换按钮 */}
-                            <button
-                                onClick={() => {
-                                    if (viewMode === 'edit') {
-                                        // 从编辑切换到预览，如果有修改则保存
-                                        if (selectedNote && editingContent !== selectedNote.content_md) {
-                                            handleUpdateNote()
+                        {!versionPreview && (
+                            <div className="absolute right-4 top-4 z-50 flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (viewMode === 'edit') {
+                                            if (selectedNote && editingContent !== selectedNote.content_md) {
+                                                handleUpdateNote()
+                                            } else {
+                                                setViewMode('view')
+                                            }
                                         } else {
-                                            setViewMode('view')
+                                            startEdit()
                                         }
-                                    } else {
-                                        // 从预览切换到编辑
-                                        startEdit()
-                                    }
-                                }}
-                                className="p-2 rounded-full bg-background/90 backdrop-blur-sm hover:bg-accent transition-colors shadow-lg border border-border"
-                                title={viewMode === 'edit' ? '预览' : '编辑'}
-                            >
-                                <span className="text-xl">{viewMode === 'edit' ? '👁️' : '✏️'}</span>
-                            </button>
+                                    }}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-border bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    title={viewMode === 'edit' ? '预览' : '编辑'}
+                                >
+                                    {viewMode === 'edit' ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleProcessAI}
+                                    disabled={aiProcessing}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-border bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                    title={aiProcessing ? `AI 处理中: ${aiStatus}` : 'AI 分析'}
+                                >
+                                    {aiProcessing ? (
+                                        <Loader2 className="h-4 w-4 animate-spin text-violet-600 dark:text-violet-400" />
+                                    ) : (
+                                        <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                                    )}
+                                </button>
+                            </div>
+                        )}
 
-                            {/* AI 分析按钮 */}
-                            <button
-                                onClick={handleProcessAI}
-                                disabled={aiProcessing}
-                                className="p-2 rounded-full bg-background/90 backdrop-blur-sm hover:bg-accent transition-colors disabled:opacity-50 shadow-lg border border-border"
-                                title={aiProcessing ? `AI 处理中: ${aiStatus}` : 'AI 分析'}
-                            >
-                                <span className="text-xl">{aiProcessing ? '⏳' : '💡'}</span>
-                            </button>
-                        </div>
-
-                        <Card className="h-full flex flex-col">
-                            <CardContent className="flex-1 flex flex-col pt-6 overflow-hidden">
-                                {/* 内容区域 */}
-                                {viewMode === 'edit' ? (
+                        <div className="flex h-full min-h-0 flex-col border-l border-border/60 bg-background">
+                            <div className="border-b border-border/60 px-10 py-3 pr-24">
+                                <div className="flex min-w-0 flex-col gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        {isNoteDirty && (
+                                            <span
+                                                className="h-2.5 w-2.5 shrink-0 rounded-full bg-violet-500 dark:bg-violet-400"
+                                                title="有未保存的更改（⌘S / Ctrl+S 保存）"
+                                            />
+                                        )}
+                                        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight text-foreground">
+                                            {selectedNote.title}
+                                        </h1>
+                                        {isNoteDirty && (
+                                            <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                                                未保存
+                                            </span>
+                                        )}
+                                    </div>
+                                    {versionPreview && (
+                                        <div className="flex flex-wrap items-center gap-2 rounded-sm border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[12px] text-foreground dark:border-amber-400/20 dark:bg-amber-400/10">
+                                            <span className="min-w-0 text-muted-foreground">
+                                                历史版本预览 ·{' '}
+                                                {new Date(versionPreview.created_at).toLocaleString()}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setVersionPreview(null)}
+                                                className="inline-flex shrink-0 items-center gap-1 rounded-sm px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-amber-500/20 dark:hover:bg-amber-400/15"
+                                            >
+                                                <X className="h-3 w-3" />
+                                                关闭预览
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex min-h-0 flex-1 flex-col px-10 pb-6 pt-2">
+                                {versionPreview ? (
+                                    <div className="prose prose-sm max-w-208 min-h-0 flex-1 overflow-y-auto py-2 dark:prose-invert prose-a:text-violet-600 dark:prose-a:text-violet-400">
+                                        <NoteMarkdownBody
+                                            source={versionPreview.content_md}
+                                            emptyHint="该历史版本没有正文"
+                                        />
+                                    </div>
+                                ) : viewMode === 'edit' ? (
                                     <textarea
-                                        className="flex-1 w-full p-4 border-0 outline-none resize-none bg-transparent"
+                                        className="min-h-0 w-full flex-1 resize-none border-0 bg-transparent py-2 font-mono text-[15px] leading-relaxed text-foreground outline-none selection:bg-violet-500/20 dark:selection:bg-violet-400/20"
+                                        spellCheck={false}
                                         value={editingContent}
                                         onChange={e => setEditingContent(e.target.value)}
                                         autoFocus
                                     />
                                 ) : (
-                                    <div className="flex-1 overflow-y-auto mb-4 p-4 prose prose-sm dark:prose-invert max-w-none">
-                                        {selectedNote.content_md ?
-                                            <ReactMarkdown
-                                                remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-                                                rehypePlugins={[
-                                                    rehypeRaw,
-                                                    rehypeKatex,
-                                                    rehypeHighlight,
-                                                    rehypeSlug,
-                                                    [rehypeAutolinkHeadings, { behavior: 'wrap' }]
-                                                ]}
-                                            >
-                                                {editingContent || selectedNote.content_md}
-                                            </ReactMarkdown> : <div className="text-sm text-muted-foreground italic">
+                                    <div className="prose prose-sm max-w-208 min-h-0 flex-1 overflow-y-auto py-2 dark:prose-invert prose-a:text-violet-600 dark:prose-a:text-violet-400">
+                                        {selectedNote.content_md ? (
+                                            <NoteMarkdownBody
+                                                source={editingContent || selectedNote.content_md}
+                                                emptyHint="笔记为空，点击编辑按钮开始编辑"
+                                            />
+                                        ) : (
+                                            <div className="text-sm italic text-muted-foreground">
                                                 笔记为空，点击编辑按钮开始编辑
                                             </div>
-                                        }
+                                        )}
                                     </div>
                                 )}
-
-                                {/* 底部信息栏 */}
-                                <div className="flex items-center gap-2" onClick={handleClickOutside}>
-                                    <p className="text-xs text-muted-foreground">
-                                        更新于 {new Date(selectedNote.updated_at).toLocaleString()}
-                                    </p>
+                                <div
+                                    className="mt-auto flex flex-wrap items-center gap-2 border-t border-border/40 pt-3 text-[11px] text-muted-foreground"
+                                    onClick={handleClickOutside}
+                                >
+                                    <span>
+                                        {versionPreview
+                                            ? `该版本保存于 ${new Date(versionPreview.created_at).toLocaleString()}（当前笔记更新于 ${new Date(selectedNote.updated_at).toLocaleString()}）`
+                                            : `更新于 ${new Date(selectedNote.updated_at).toLocaleString()}`}
+                                    </span>
                                     {selectedNote.tags.length > 0 && (
-                                        <div className="flex gap-1 flex-wrap">
+                                        <div className="flex flex-wrap gap-1">
                                             {selectedNote.tags.map(tag => (
-                                                <span key={tag.id} className="text-xs bg-accent px-2 py-0.5 rounded-full text-muted-foreground">
-                                                    {tag.name}
+                                                <span
+                                                    key={tag.id}
+                                                    className="rounded-sm bg-muted/80 px-1.5 py-px text-[11px] text-muted-foreground"
+                                                >
+                                                    #{tag.name}
                                                 </span>
                                             ))}
                                         </div>
                                     )}
                                 </div>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     </>
                 ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                        选择一篇笔记，或点击 + 新建
+                    <div className="flex h-full items-center justify-center border-l border-border/60 px-6 text-center text-sm text-muted-foreground">
+                        {sidebarCollapsed
+                            ? '点击左侧按钮或按 ⌘B / Ctrl+B 展开侧栏，选择或新建笔记'
+                            : '选择一篇笔记，或点击侧栏 + 新建'}
                     </div>
                 )}
             </div>

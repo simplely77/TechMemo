@@ -38,10 +38,14 @@ export interface UpdateNoteRequest {
 }
 
 export interface NoteVersion {
-  id:number
+  id: number
   note_id: number
   content_md: string
-  created_time: string
+  created_at: string
+}
+
+export interface GetNoteVersionsResponse {
+  versions: NoteVersion[]
 }
 
 export interface GetNotesQuery {
@@ -109,7 +113,7 @@ export const deleteNote = (id: number) => {
  * 获取笔记版本历史
  */
 export const getNoteVersions = (id: number, sort: string = 'created_at_desc') => {
-  return apiGet<NoteVersion[]>(`/notes/${id}/versions`, { params: { sort } })
+  return apiGet<GetNoteVersionsResponse>(`/notes/${id}/versions`, { params: { sort } })
 }
 
 /**
