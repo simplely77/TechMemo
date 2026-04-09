@@ -7,9 +7,11 @@ import (
 	"techmemo/backend/common/errors"
 	"techmemo/backend/dao"
 	"techmemo/backend/handler/dto"
+	"techmemo/backend/model"
+	"time"
 )
 
-const Threshold = 0.7
+const Threshold = 0.5
 
 type SearchService struct {
 	searchDao   *dao.SearchDao
@@ -24,6 +26,18 @@ func (s *SearchService) SemanticSearch(
 	req *dto.SemanticSearchReq,
 	userID int64,
 ) (*dto.SemanticSearchResp, error) {
+	if req.Query != "" {
+		searchHistory := &model.SearchHistory{
+			UserID:         userID,
+			Keyword:        req.Query,
+			SearchType:     "semantic",
+			TargetType:     req.SearchType,
+			LastSearchedAt: time.Now(),
+		}
+		if err := s.searchDao.SaveSearchHistory(ctx, searchHistory); err != nil {
+			return nil, errors.InternalErr
+		}
+	}
 
 	// 1. 将查询文本转换为向量
 	queryVector, err := s.aiClient.GetEmbedding(ctx, req.Query)
@@ -71,6 +85,46 @@ func (s *SearchService) SemanticSearch(
 		Results: resultItems,
 		Query:   req.Query,
 		Total:   len(resultItems),
+	}, nil
+}
+
+// GetSearchHistory 分页获取当前用户的搜索历史（按最近搜索时间倒序）
+func (s *SearchService) GetSearchHistory(
+	ctx context.Context,
+	req *dto.GetSearchHistoryReq,
+	userID int64,
+) (*dto.GetSearchHistoryResp, error) {
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 || req.PageSize > 100 {
+		req.PageSize = 20
+	}
+	offset := int((req.Page - 1) * req.PageSize)
+	limit := int(req.PageSize)
+
+	rows, total, err := s.searchDao.ListSearchHistory(ctx, userID, offset, limit, req.SearchType, req.TargetType)
+	if err != nil {
+		return nil, errors.InternalErr
+	}
+
+	items := make([]dto.SearchHistoryItem, 0, len(rows))
+	for _, h := range rows {
+		items = append(items, dto.SearchHistoryItem{
+			ID:             h.ID,
+			Keyword:        h.Keyword,
+			SearchType:     h.SearchType,
+			TargetType:     h.TargetType,
+			LastSearchedAt: h.LastSearchedAt,
+			CreatedAt:      h.CreatedAt,
+		})
+	}
+
+	return &dto.GetSearchHistoryResp{
+		Items:    items,
+		Total:    total,
+		Page:     req.Page,
+		PageSize: req.PageSize,
 	}, nil
 }
 

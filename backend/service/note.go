@@ -8,6 +8,7 @@ import (
 	"techmemo/backend/handler/dto"
 	"techmemo/backend/model"
 	"techmemo/backend/query"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -16,6 +17,7 @@ import (
 const maxNoteVersionsPerNote = 20
 
 type NoteService struct {
+	searchDao   *dao.SearchDao
 	noteDao     *dao.NoteDao
 	categoryDao *dao.CategoryDao
 	tagDao      *dao.TagDao
@@ -383,6 +385,18 @@ func (n *NoteService) GetNotes(ctx context.Context, req *dto.GetNotesReq, userID
 		})
 	}
 
+	if req.Keyword != "" {
+		searchHistory := &model.SearchHistory{
+			UserID:         userID,
+			Keyword:        req.Keyword,
+			SearchType:     "keyword",
+			TargetType:     "note",
+			LastSearchedAt: time.Now(),
+		}
+		if err := n.searchDao.SaveSearchHistory(ctx, searchHistory); err != nil {
+			return nil, errors.InternalErr
+		}
+	}
 	return &dto.GetNotesResp{
 		Notes:    respNotes,
 		Total:    total,
@@ -455,6 +469,6 @@ func (n *NoteService) CreateNoteWithTags(ctx context.Context, req *dto.CreateNot
 	return n.GetNote(ctx, note.ID)
 }
 
-func NewNoteService(noteDao *dao.NoteDao, categoryDao *dao.CategoryDao, tagDao *dao.TagDao, kpDao *dao.KnowledgePointDao, q *query.Query) *NoteService {
-	return &NoteService{noteDao: noteDao, categoryDao: categoryDao, tagDao: tagDao, kpDao: kpDao, q: q}
+func NewNoteService(searchDao *dao.SearchDao, noteDao *dao.NoteDao, categoryDao *dao.CategoryDao, tagDao *dao.TagDao, kpDao *dao.KnowledgePointDao, q *query.Query) *NoteService {
+	return &NoteService{searchDao: searchDao, noteDao: noteDao, categoryDao: categoryDao, tagDao: tagDao, kpDao: kpDao, q: q}
 }

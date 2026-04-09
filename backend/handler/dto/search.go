@@ -1,5 +1,33 @@
 package dto
 
+import "time"
+
+// GetSearchHistoryReq 获取搜索历史请求
+type GetSearchHistoryReq struct {
+	Page       int64  `form:"page"`
+	PageSize   int64  `form:"page_size"`
+	SearchType string `form:"search_type"`
+	TargetType string `form:"target_type"`
+}
+
+// GetSearchHistoryResp 获取搜索历史响应
+type GetSearchHistoryResp struct {
+	Items    []SearchHistoryItem `json:"items"`
+	Total    int64               `json:"total"`
+	Page     int64               `json:"page"`
+	PageSize int64               `json:"page_size"`
+}
+
+// SearchHistoryItem 单条搜索历史
+type SearchHistoryItem struct {
+	ID             int64     `json:"id"`
+	Keyword        string    `json:"keyword"`
+	SearchType     string    `json:"search_type"`
+	TargetType     string    `json:"target_type"`
+	LastSearchedAt time.Time `json:"last_searched_at"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 // SemanticSearchReq 语义搜索请求
 type SemanticSearchReq struct {
 	Query      string `json:"query" binding:"required"`

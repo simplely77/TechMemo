@@ -1,4 +1,4 @@
-import { apiPost } from '@/utils/api'
+import { apiPost, apiGet } from '@/utils/api'
 
 export interface SearchResult {
   id: number
@@ -30,7 +30,33 @@ export interface SemanticSearchResponse {
   query: string
   total: number
 }
+export interface SearchHistoryItem {
+  id: number
+  keyword: string
+  search_type: string
+  target_type: string
+  last_searched_at: string
+  created_at: string
+}
+
+export interface GetSearchHistory{
+  page: number
+  page_size: number
+  search_type: string
+  target_type: string
+}
+
+export interface GetSearchHistoryResponse {
+  items: SearchHistoryItem[]
+  total: number
+  page: number
+  page_size: number
+}
 
 export const semanticSearch = (data: SemanticSearchRequest) => {
   return apiPost<SemanticSearchResponse>('/search/semantic', data)
+}
+
+export const getSearchHistory = (page: number, page_size: number, search_type: string, target_type: string) => {
+  return apiGet<GetSearchHistoryResponse>('/search/history', { params: { page, page_size, search_type, target_type } })
 }

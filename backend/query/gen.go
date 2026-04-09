@@ -28,6 +28,7 @@ var (
 	NoteRootNode      *noteRootNode
 	NoteTag           *noteTag
 	NoteVersion       *noteVersion
+	SearchHistory     *searchHistory
 	Tag               *tag
 	User              *user
 )
@@ -45,6 +46,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	NoteRootNode = &Q.NoteRootNode
 	NoteTag = &Q.NoteTag
 	NoteVersion = &Q.NoteVersion
+	SearchHistory = &Q.SearchHistory
 	Tag = &Q.Tag
 	User = &Q.User
 }
@@ -63,6 +65,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		NoteRootNode:      newNoteRootNode(db, opts...),
 		NoteTag:           newNoteTag(db, opts...),
 		NoteVersion:       newNoteVersion(db, opts...),
+		SearchHistory:     newSearchHistory(db, opts...),
 		Tag:               newTag(db, opts...),
 		User:              newUser(db, opts...),
 	}
@@ -82,6 +85,7 @@ type Query struct {
 	NoteRootNode      noteRootNode
 	NoteTag           noteTag
 	NoteVersion       noteVersion
+	SearchHistory     searchHistory
 	Tag               tag
 	User              user
 }
@@ -102,6 +106,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		NoteRootNode:      q.NoteRootNode.clone(db),
 		NoteTag:           q.NoteTag.clone(db),
 		NoteVersion:       q.NoteVersion.clone(db),
+		SearchHistory:     q.SearchHistory.clone(db),
 		Tag:               q.Tag.clone(db),
 		User:              q.User.clone(db),
 	}
@@ -129,6 +134,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		NoteRootNode:      q.NoteRootNode.replaceDB(db),
 		NoteTag:           q.NoteTag.replaceDB(db),
 		NoteVersion:       q.NoteVersion.replaceDB(db),
+		SearchHistory:     q.SearchHistory.replaceDB(db),
 		Tag:               q.Tag.replaceDB(db),
 		User:              q.User.replaceDB(db),
 	}
@@ -146,6 +152,7 @@ type queryCtx struct {
 	NoteRootNode      INoteRootNodeDo
 	NoteTag           INoteTagDo
 	NoteVersion       INoteVersionDo
+	SearchHistory     ISearchHistoryDo
 	Tag               ITagDo
 	User              IUserDo
 }
@@ -163,6 +170,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		NoteRootNode:      q.NoteRootNode.WithContext(ctx),
 		NoteTag:           q.NoteTag.WithContext(ctx),
 		NoteVersion:       q.NoteVersion.WithContext(ctx),
+		SearchHistory:     q.SearchHistory.WithContext(ctx),
 		Tag:               q.Tag.WithContext(ctx),
 		User:              q.User.WithContext(ctx),
 	}

@@ -34,6 +34,21 @@ func main() {
 	})
 
 	g.UseDB(db)
-	g.ApplyBasic(g.GenerateAllTable()...)
+	g.ApplyBasic(
+		g.GenerateModel("search_history"),
+		g.GenerateModel("note"),
+		g.GenerateModel("knowledge_point"),
+		g.GenerateModel("knowledge_relation"),
+		g.GenerateModel("note_root_node"),
+		g.GenerateModel("note_tag"),
+		g.GenerateModel("note_version"),
+		g.GenerateModel("tag"),
+		g.GenerateModel("user"),
+		g.GenerateModel("category"),
+		g.GenerateModel("chat_message"),
+		g.GenerateModel("chat_session"),
+		g.GenerateModel("embedding"),
+		g.GenerateModel("ai_process_log"),
+	)
 	g.Execute()
 }

@@ -1,10 +1,100 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getNotes, getNote, type Note } from "@/services/noteService"
-import { getMindMap, getGlobalMindMap, generateGlobalMindMap, type MindMapNode, type GlobalMindMapNode } from "@/services/aiService"
-import Tree from 'react-d3-tree'
+import {
+  getMindMap,
+  getGlobalMindMap,
+  generateGlobalMindMap,
+  type MindMapNode,
+  type GlobalMindMapNode,
+  type GlobalMindMapEdge,
+} from "@/services/aiService"
+import Tree from "react-d3-tree"
+import { Hand, MousePointerClick, ZoomIn } from "lucide-react"
+
+/** 全局力导向图节点画布尺寸（与 pointer 命中区共用） */
+function measureGlobalNodeLabel(
+  node: { name?: string; importance_score?: number; x?: number; y?: number },
+  ctx: CanvasRenderingContext2D,
+  globalScale: number,
+) {
+  const label = String(node.name || "")
+  const fontSize = 11 / globalScale
+  const padX = 10 / globalScale
+  const padY = 6 / globalScale
+  const maxPx = 200 / globalScale
+  ctx.font = `500 ${fontSize}px ui-sans-serif, system-ui, sans-serif`
+  let display = label
+  while (display.length > 1 && ctx.measureText(display + "…").width > maxPx) {
+    display = display.slice(0, -1)
+  }
+  if (display !== label && label.length > 0) display += "…"
+  const tw = Math.min(ctx.measureText(display).width + padX * 2, maxPx + padX * 2)
+  const th = fontSize + padY * 2
+  return { display, tw, th, fontSize, padX, padY, x: node.x as number, y: node.y as number }
+}
+
+function paintGlobalMindMapNode(
+  node: { name?: string; importance_score?: number; x?: number; y?: number },
+  ctx: CanvasRenderingContext2D,
+  globalScale: number,
+  getFill: (score: number) => string,
+  hitColor?: string,
+) {
+  const m = measureGlobalNodeLabel(node, ctx, globalScale)
+  const { x, y } = m
+  if (x == null || y == null || Number.isNaN(x) || Number.isNaN(y)) return
+
+  const rx = 9 / globalScale
+  const left = x - m.tw / 2
+  const top = y - m.th / 2
+  const score = (node.importance_score ?? 0) as number
+
+  ctx.save()
+  if (!hitColor) {
+    ctx.shadowColor = "rgba(0, 0, 0, 0.14)"
+    ctx.shadowBlur = 10 / globalScale
+    ctx.shadowOffsetY = 3 / globalScale
+  }
+
+  ctx.beginPath()
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(left, top, m.tw, m.th, rx)
+  } else {
+    ctx.rect(left, top, m.tw, m.th)
+  }
+  ctx.fillStyle = hitColor ?? getFill(score)
+  ctx.fill()
+
+  if (!hitColor) {
+    ctx.shadowColor = "transparent"
+    ctx.shadowBlur = 0
+    ctx.shadowOffsetY = 0
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.22)"
+    ctx.lineWidth = 1 / globalScale
+    ctx.stroke()
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.97)"
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillText(m.display, x, y)
+  }
+  ctx.restore()
+}
+
+/** 与画布 pill 标签大致一致，用于在图坐标里估算「从节点中心到块边缘」距离，避免箭头被节点盖住 */
+function estimateGlobalNodeAnchorReach(name: string): number {
+  const label = String(name || "·")
+  const pad = 10
+  const maxW = 200
+  const charW = 6.2
+  const halfW = Math.min(label.length * charW + pad, maxW) / 2
+  const halfH = (11 + 12) / 2
+  return Math.hypot(halfW, halfH) + 14
+}
 
 export default function MindmapPage() {
   const { scope } = useParams<{ scope?: string }>()
@@ -22,11 +112,13 @@ export default function MindmapPage() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [mindmapNodes, setMindmapNodes] = useState<MindMapNode[]>([])
   const [globalNodes, setGlobalNodes] = useState<GlobalMindMapNode[]>([])
+  const [globalEdges, setGlobalEdges] = useState<GlobalMindMapEdge[]>([])
   const [generating, setGenerating] = useState(false)
   const [hoveredNode, setHoveredNode] = useState<any>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const [translate, setTranslate] = useState({ x: 200, y: 200 })
+  const globalFgRef = useRef<ForceGraphMethods | undefined>(undefined)
 
   useEffect(() => {
     loadNotes()
@@ -57,6 +149,7 @@ export default function MindmapPage() {
     if (!scope) {
       setMindmapNodes([])
       setGlobalNodes([])
+      setGlobalEdges([])
       setSelectedNote(null)
       setHoveredNode(null)
       return
@@ -68,10 +161,16 @@ export default function MindmapPage() {
       ;(async () => {
         try {
           const res = await getGlobalMindMap()
-          if (!cancelled) setGlobalNodes(res.nodes || [])
+          if (!cancelled) {
+            setGlobalNodes(res.nodes || [])
+            setGlobalEdges(res.edges || [])
+          }
         } catch (err) {
           console.error("Failed to load global mindmap", err)
-          if (!cancelled) setGlobalNodes([])
+          if (!cancelled) {
+            setGlobalNodes([])
+            setGlobalEdges([])
+          }
         }
       })()
       return () => {
@@ -84,6 +183,7 @@ export default function MindmapPage() {
       return
     }
     setGlobalNodes([])
+    setGlobalEdges([])
     setHoveredNode(null)
     ;(async () => {
       try {
@@ -147,10 +247,82 @@ export default function MindmapPage() {
   }
 
   const getNodeColor = (score: number) => {
-    if (score >= 0.7) return '#ef4444'
-    if (score >= 0.4) return '#eab308'
-    return '#22c55e'
+    if (score >= 0.7) return "#ef4444"
+    if (score >= 0.4) return "#eab308"
+    return "#22c55e"
   }
+
+  const globalGraphData = useMemo(() => {
+    const idSet = new Set(globalNodes.map((n) => n.id))
+    return {
+      nodes: globalNodes.map((n) => ({
+        id: n.id,
+        name: n.name,
+        description: n.description,
+        importance_score: n.importance_score,
+        note_id: n.note_id,
+        anchorReach: estimateGlobalNodeAnchorReach(n.name),
+      })),
+      links: globalEdges
+        .filter((e) => idSet.has(e.from_id) && idSet.has(e.to_id))
+        .map((e) => ({
+          source: e.from_id,
+          target: e.to_id,
+          label: e.label,
+        })),
+    }
+  }, [globalNodes, globalEdges])
+
+  const globalGraphStats = useMemo(
+    () => ({
+      nNodes: globalGraphData.nodes.length,
+      nEdges: globalGraphData.links.length,
+    }),
+    [globalGraphData],
+  )
+
+  useEffect(() => {
+    if (!globalFgRef.current) return
+  
+    // 修改 link 距离
+    globalFgRef.current.d3Force("link")?.distance(100)
+  
+    // 修改斥力（让图更散）
+    globalFgRef.current.d3Force("charge")?.strength(-200)
+  }, [globalGraphData])
+
+  useEffect(() => {
+    if (globalNodes.length === 0 || !isGlobalView) return
+    const t = window.setTimeout(() => {
+      globalFgRef.current?.zoomToFit?.(400, 80)
+    }, 350)
+    return () => window.clearTimeout(t)
+  }, [globalNodes.length, isGlobalView, globalEdges.length])
+
+  const handleGlobalNodeClick = useCallback(
+    (node: { note_id?: number }) => {
+      if (node.note_id != null) navigate(`/mindmap/${node.note_id}`)
+    },
+    [navigate],
+  )
+
+  /** 沿连线方向把箭头放在「目标节点块」之前，避免被圆角卡片遮挡 */
+  const globalLinkArrowRelPos = useCallback((link: any) => {
+    const t = link.target
+    const s = link.source
+    if (!t || !s || typeof t !== "object" || typeof s !== "object") return 0.82
+    const tx = t.x as number
+    const ty = t.y as number
+    const sx = s.x as number
+    const sy = s.y as number
+    if ([tx, ty, sx, sy].some((v) => v == null || Number.isNaN(v))) return 0.82
+    const dist = Math.hypot(tx - sx, ty - sy)
+    if (dist < 1e-6) return 0.5
+    const reach = typeof t.anchorReach === "number" ? t.anchorReach : 52
+    const rel = 1 - reach / dist
+    if (dist < reach * 1.25) return 0.52
+    return Math.max(0.25, Math.min(0.94, rel))
+  }, [])
 
   const renderMindmapTree = (nodes: MindMapNode[], activeNoteId: number) => {
     if (!nodes || nodes.length === 0) return null
@@ -309,7 +481,7 @@ export default function MindmapPage() {
                           }`}
                         onClick={() => navigate(`/mindmap/${note.id}`)}
                       >
-                        <p className="font-semibold truncate line-clamp-2">{note.title}</p>
+                        <p className="font-semibold truncate hover:underline inline-block max-w-full" onClick={(e) => {e.stopPropagation(); navigate(`/note/${note.id}`)}}>{note.title}</p>
                         <p className="text-xs opacity-70">{note.category.name}</p>
                       </div>
                     ))}
@@ -360,48 +532,84 @@ export default function MindmapPage() {
                       </p>
                     </div>
                   ) : (
-                    <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {globalNodes.map((node) => (
-                          <Card
-                            key={node.id}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault()
-                                navigate(`/mindmap/${node.note_id}`)
-                              }
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Hand className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                            拖动画布平移
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <ZoomIn className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                            滚轮缩放
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <MousePointerClick className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                            点击节点进入笔记导图
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-xs">
+                          <span className="tabular-nums text-muted-foreground">
+                            {globalGraphStats.nNodes} 个知识点 · {globalGraphStats.nEdges} 条关联
+                          </span>
+                          <div className="flex items-center gap-2 border-l border-border pl-3">
+                            <span className="text-muted-foreground">重要度</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="size-2.5 rounded-full bg-[#22c55e]" title="低" />
+                              <span className="text-muted-foreground">低</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="size-2.5 rounded-full bg-[#eab308]" title="中" />
+                              <span className="text-muted-foreground">中</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="size-2.5 rounded-full bg-[#ef4444]" title="高" />
+                              <span className="text-muted-foreground">高</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="relative overflow-hidden rounded-xl border border-border/80 bg-linear-to-br from-muted/60 via-background to-muted/40 p-px shadow-inner dark:from-muted/25 dark:via-background dark:to-muted/20">
+                        <div
+                          className="pointer-events-none absolute inset-0 opacity-[0.35] dark:opacity-25"
+                          style={{
+                            backgroundImage: `radial-gradient(circle at 1px 1px, hsl(var(--border)) 1px, transparent 0)`,
+                            backgroundSize: "20px 20px",
+                          }}
+                        />
+                        <div className="relative h-[calc(100vh-19rem)] min-h-[320px] w-full overflow-hidden rounded-[11px] bg-background/40 dark:bg-background/60 [&_canvas]:outline-none">
+                          <ForceGraph2D
+                            ref={globalFgRef}
+                            graphData={globalGraphData}
+                            backgroundColor="transparent"
+                            linkColor={() => "rgba(100, 116, 139, 0.42)"}
+                            linkDirectionalArrowLength={5}
+                            linkDirectionalArrowRelPos={globalLinkArrowRelPos}
+                            linkDirectionalArrowColor={() => "rgba(100, 116, 139, 0.55)"}
+                            linkCurvature={0.14}
+                            linkWidth={1.15}
+                            linkLabel={(link: any) => String(link.label || "")}
+                            nodeLabel={(n: any) =>
+                              [
+                                n.name,
+                                n.description,
+                                `重要度 ${(((n.importance_score ?? 0) as number) * 100).toFixed(0)}%`,
+                                n.note_id != null ? `笔记 #${n.note_id}` : "",
+                              ]
+                                .filter(Boolean)
+                                .join("\n")
+                            }
+                            nodeCanvasObject={(node: any, ctx, globalScale) => {
+                              paintGlobalMindMapNode(node, ctx, globalScale, getNodeColor)
                             }}
-                            onClick={() => navigate(`/mindmap/${node.note_id}`)}
-                            className="hover:shadow-lg transition-all cursor-pointer border-l-4"
-                            style={{
-                              borderLeftColor: `hsl(var(--primary) / ${node.importance_score})`
+                            nodePointerAreaPaint={(node: any, color, ctx, globalScale) => {
+                              paintGlobalMindMapNode(node, ctx, globalScale, getNodeColor, color)
                             }}
-                          >
-                            <CardHeader className="pb-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <CardTitle className="text-sm font-semibold">{node.name}</CardTitle>
-                                <div className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${node.importance_score >= 0.7
-                                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                  : node.importance_score >= 0.4
-                                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                  }`}>
-                                  {(node.importance_score * 100).toFixed(0)}%
-                                </div>
-                              </div>
-                            </CardHeader>
-                            <CardContent className="pt-0">
-                              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                                {node.description}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                来源笔记 ID: {node.note_id}
-                              </p>
-                            </CardContent>
-                          </Card>
-                        ))}
+                            onNodeClick={(node: any) => handleGlobalNodeClick(node)}
+                            cooldownTicks={160}
+                          />
+                        </div>
                       </div>
                     </div>
                   )

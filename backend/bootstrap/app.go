@@ -22,21 +22,18 @@ type App struct {
 
 func InitApp() *App {
 	userDao := dao.NewUserDao(database.Q)
-	userService := service.NewUserService(userDao)
+	searchDao := dao.NewSearchDao(database.Q, database.DB)
 	tagDao := dao.NewTagDao(database.Q)
-	tagService := service.NewTagService(tagDao)
 	noteDao := dao.NewNoteDao(database.Q)
 	chatDao := dao.NewChatDao(database.Q)
 	aiDao := dao.NewAIDao(database.Q, database.DB)
 	categoryDao := dao.NewCategoryDao(database.Q)
-	categoryService := service.NewCategoryService(categoryDao, noteDao)
-
+	userService := service.NewUserService(userDao)
+	tagService := service.NewTagService(tagDao)
 	knowledgePointDao := dao.NewKnowledgePointDao(database.Q)
-	noteService := service.NewNoteService(noteDao, categoryDao, tagDao, knowledgePointDao, database.Q)
-	knowledgePointService := service.NewKnowledgePointService(knowledgePointDao, noteDao)
-
-	// 初始化 SearchService
-	searchDao := dao.NewSearchDao(database.Q, database.DB)
+	categoryService := service.NewCategoryService(categoryDao, noteDao)
+	noteService := service.NewNoteService(searchDao, noteDao, categoryDao, tagDao, knowledgePointDao, database.Q)
+	knowledgePointService := service.NewKnowledgePointService(knowledgePointDao, noteDao, searchDao)
 	aiClient := aiclient.NewOpenAIClientFromConfig(config.AppConfig)
 	searchService := service.NewSearchService(
 		searchDao,
@@ -45,13 +42,11 @@ func InitApp() *App {
 		categoryDao,
 		aiClient,
 	)
-
 	aiService := service.NewAIService(
 		aiDao,
 		noteDao,
 		aiClient,
 	)
-
 	statsService := service.NewStatsServcie(
 		noteDao,
 		categoryDao,
@@ -59,7 +54,6 @@ func InitApp() *App {
 		tagDao,
 		aiDao,
 	)
-
 	// 初始化 ChatService
 	chatService := service.NewChatService(
 		chatDao,

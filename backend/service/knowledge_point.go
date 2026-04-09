@@ -5,11 +5,14 @@ import (
 	"techmemo/backend/common/errors"
 	"techmemo/backend/dao"
 	"techmemo/backend/handler/dto"
+	"techmemo/backend/model"
+	"time"
 )
 
 type KnowledgePointService struct {
 	knowledgePointDao *dao.KnowledgePointDao
 	noteDao           *dao.NoteDao
+	searchDao         *dao.SearchDao
 }
 
 func (s *KnowledgePointService) GetKnowledgePoints(ctx context.Context, req *dto.GetKnowledgePointsReq, userID int64) (*dto.GetKnowledgePointsResp, error) {
@@ -53,6 +56,18 @@ func (s *KnowledgePointService) GetKnowledgePoints(ctx context.Context, req *dto
 		}
 
 		items = append(items, item)
+	}
+	if req.Keyword != "" {
+		searchHistory := &model.SearchHistory{
+			UserID:         userID,
+			Keyword:        req.Keyword,
+			SearchType:     "keyword",
+			TargetType:     "knowledge",
+			LastSearchedAt: time.Now(),
+		}
+		if err := s.searchDao.SaveSearchHistory(ctx, searchHistory); err != nil {
+			return nil, errors.InternalErr
+		}
 	}
 
 	return &dto.GetKnowledgePointsResp{
@@ -163,9 +178,10 @@ func (s *KnowledgePointService) DeleteKnowledgePoint(ctx context.Context, id int
 	return s.knowledgePointDao.DeleteKnowledgePoint(ctx, id)
 }
 
-func NewKnowledgePointService(knowledgePointDao *dao.KnowledgePointDao, noteDao *dao.NoteDao) *KnowledgePointService {
+func NewKnowledgePointService(knowledgePointDao *dao.KnowledgePointDao, noteDao *dao.NoteDao, searchDao *dao.SearchDao) *KnowledgePointService {
 	return &KnowledgePointService{
 		knowledgePointDao: knowledgePointDao,
 		noteDao:           noteDao,
+		searchDao:         searchDao,
 	}
 }

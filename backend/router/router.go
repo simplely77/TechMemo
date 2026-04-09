@@ -104,7 +104,11 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 			}
 
 			// 搜索与问答
-			authorized.POST("/search/semantic", handler.HandlerSemanticSearch(app.SearchService)) // 语义搜索
+			search := authorized.Group("/search")
+			{
+				search.GET("/history", handler.HandlerGetSearchHistory(app.SearchService))              // 搜索历史
+				search.POST("/semantic", handler.HandlerSemanticSearch(app.SearchService))              // 语义搜索
+			}
 			authorized.POST("/qa/ask", nil)                                                       // 智能问答
 
 			// 聊天

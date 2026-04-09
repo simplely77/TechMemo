@@ -40,8 +40,8 @@ export interface GlobalMindMapNode {
 }
 
 export interface GlobalMindMapEdge {
-  from: number
-  to: number
+  from_id: number
+  to_id: number
   label: string
 }
 

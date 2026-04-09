@@ -162,10 +162,7 @@ func (n *NoteDao) GetNotes(ctx context.Context, p GetNotesParams) ([]*model.Note
 
 	if p.Keyword != "" {
 		like := "%" + p.Keyword + "%"
-		q = q.Where(
-			n.q.Note.Title.Like(like),
-			n.q.Note.ContentMd.Like(like),
-		)
+		q = q.Where(n.q.Note.Title.Like(like))
 	}
 
 	if len(p.TagIDs) > 0 {

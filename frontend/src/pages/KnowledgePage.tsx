@@ -132,7 +132,7 @@ export default function KnowledgePage() {
                           来源:{" "}
                           <Link
                             to={`/note/${point.source_note_id}`}
-                            className="text-primary underline-offset-2 hover:underline"
+                            className="underline-offset-2 hover:underline"
                             onClick={e => e.stopPropagation()}
                           >
                             {point.source_note_title || `笔记 #${point.source_note_id}`}
