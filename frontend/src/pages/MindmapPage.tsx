@@ -8,6 +8,7 @@ import {
   getMindMap,
   getGlobalMindMap,
   generateGlobalMindMap,
+  getTaskStatus,
   type MindMapNode,
   type GlobalMindMapNode,
   type GlobalMindMapEdge,
@@ -114,6 +115,8 @@ export default function MindmapPage() {
   const [globalNodes, setGlobalNodes] = useState<GlobalMindMapNode[]>([])
   const [globalEdges, setGlobalEdges] = useState<GlobalMindMapEdge[]>([])
   const [generating, setGenerating] = useState(false)
+  /** 全局图谱异步任务 task_id，非空时由 effect 轮询状态 */
+  const [globalGenPollTaskId, setGlobalGenPollTaskId] = useState<string | null>(null)
   const [hoveredNode, setHoveredNode] = useState<any>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
@@ -222,15 +225,69 @@ export default function MindmapPage() {
     }
   }, [noteIdFromRoute, selectedKpId, mindmapNodes, navigate])
 
+  // 全局思维导图任务：轮询直到 completed / failed，与笔记页 AI 状态轮询类似
+  useEffect(() => {
+    if (!globalGenPollTaskId) return
+    let cancelled = false
+    let intervalId: ReturnType<typeof setInterval> | undefined
+
+    const stop = () => {
+      if (intervalId != null) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
+    }
+
+    const poll = async () => {
+      if (cancelled) return
+      try {
+        const res = await getTaskStatus(globalGenPollTaskId)
+        const st = res.status || ""
+        if (cancelled) return
+
+        if (st === "completed") {
+          stop()
+          setGlobalGenPollTaskId(null)
+          setGenerating(false)
+          try {
+            const mapRes = await getGlobalMindMap()
+            if (!cancelled) {
+              setGlobalNodes(mapRes.nodes || [])
+              setGlobalEdges(mapRes.edges || [])
+            }
+          } catch (e) {
+            console.error("Failed to refresh global mindmap", e)
+          }
+          if (!cancelled) alert("全局思维导图生成完成")
+          return
+        }
+        if (st === "failed") {
+          stop()
+          setGlobalGenPollTaskId(null)
+          setGenerating(false)
+          if (!cancelled) alert("全局思维导图生成失败")
+        }
+      } catch (err) {
+        console.error("poll global mindmap task", err)
+      }
+    }
+
+    void poll()
+    intervalId = setInterval(poll, 2000)
+    return () => {
+      cancelled = true
+      stop()
+    }
+  }, [globalGenPollTaskId])
+
   const handleGenerateGlobalMindmap = async () => {
     setGenerating(true)
     try {
-      await generateGlobalMindMap()
-      alert("全局思维导图生成任务已启动，请稍后刷新查看")
+      const res = await generateGlobalMindMap()
+      setGlobalGenPollTaskId(res.task_id)
     } catch (err) {
       console.error("Failed to generate global mindmap", err)
       alert("生成失败")
-    } finally {
       setGenerating(false)
     }
   }

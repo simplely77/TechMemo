@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -269,19 +270,20 @@ func (s *ChatService) buildRAGContext(ctx context.Context, userQuery string, ses
 		return nil, err
 	}
 
-	// 获取本会话最近消息
+	// 获取本会话最近消息（DAO 按时间倒序；大模型需要按对话时间正序）
 	recentMsgs, err := s.chatDao.GetRecentMessages(ctx, sessionID, RecentMessageCount)
 	if err != nil {
 		return nil, err
 	}
+	slices.Reverse(recentMsgs)
 
 	// 语义搜索（笔记与知识点；聊天消息不再建向量）
 	topK := InitialTopK
 	noteResults, _ := s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "note", userID, topK, NoteThreshold)
 	kpResults, _ := s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "knowledge", userID, topK, KnowledgeThreshold)
 
-	// 合并上下文
-	contextMsgs := s.mergeContext(ctx, recentMsgs, noteResults, kpResults, userQuery)
+	// 合并上下文（recentMsgs 已含本轮用户消息，见 SendMessage 先落库再 buildRAGContext）
+	contextMsgs := s.mergeContext(ctx, recentMsgs, noteResults, kpResults)
 
 	// 动态裁剪
 	totalTokens := s.calculateTotalTokens(contextMsgs)
@@ -289,7 +291,7 @@ func (s *ChatService) buildRAGContext(ctx context.Context, userQuery string, ses
 		topK--
 		noteResults, _ = s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "note", userID, topK, NoteThreshold)
 		kpResults, _ = s.searchDao.SearchEmbeddingsByVector(ctx, queryVector, "knowledge", userID, topK, KnowledgeThreshold)
-		contextMsgs = s.mergeContext(ctx, recentMsgs, noteResults, kpResults, userQuery)
+		contextMsgs = s.mergeContext(ctx, recentMsgs, noteResults, kpResults)
 		totalTokens = s.calculateTotalTokens(contextMsgs)
 	}
 
@@ -303,8 +305,8 @@ func (s *ChatService) buildRAGContext(ctx context.Context, userQuery string, ses
 	}, contextMsgs...), nil
 }
 
-// mergeContext 合并上下文
-func (s *ChatService) mergeContext(ctx context.Context, recentMsgs []*model.ChatMessage, noteResults, kpResults []dao.SearchResult, userQuery string) []aiclient.ChatMessage {
+// mergeContext 合并上下文。recentMsgs 须为时间正序，且已包含本轮用户消息（与 SendMessage 中先 CreateMessage 再 buildRAGContext 一致）。
+func (s *ChatService) mergeContext(ctx context.Context, recentMsgs []*model.ChatMessage, noteResults, kpResults []dao.SearchResult) []aiclient.ChatMessage {
 	var result []aiclient.ChatMessage
 
 	// 知识库上下文
@@ -328,19 +330,13 @@ func (s *ChatService) mergeContext(ctx context.Context, recentMsgs []*model.Chat
 		}
 	}
 
-	// 最近消息
+	// 最近消息（user/assistant 交替，时间正序）
 	for _, msg := range recentMsgs {
 		result = append(result, aiclient.ChatMessage{
 			Role:    msg.Role,
 			Content: msg.Content,
 		})
 	}
-
-	// 当前查询
-	result = append(result, aiclient.ChatMessage{
-		Role:    "user",
-		Content: userQuery,
-	})
 
 	return result
 }

@@ -42,6 +42,7 @@ export default function QAPage() {
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameDraft, setRenameDraft] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messageInputRef = useRef<HTMLInputElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -245,6 +246,8 @@ const handleSendMessage = async () => {
     console.error("Failed to send message", err)
   } finally {
     setLoading(false)
+    // 下一帧再聚焦，确保 loading 已解除、输入框不再 disabled
+    setTimeout(() => messageInputRef.current?.focus(), 0)
   }
 }
 
@@ -279,7 +282,7 @@ const handleSendMessage = async () => {
                         <Input
                           value={renameDraft}
                           onChange={e => setRenameDraft(e.target.value)}
-                          className="flex-1 min-w-0 h-7 py-0 text-sm shadow-none bg-background text-foreground border-border focus-visible:ring-1"
+                          className="flex-1 min-w-0 h-7 py-0 text-sm shadow-none bg-background text-black border-border focus-visible:ring-1"
                           autoFocus
                           onClick={e => e.stopPropagation()}
                           onMouseDown={e => e.stopPropagation()}
@@ -412,6 +415,7 @@ const handleSendMessage = async () => {
             <CardContent className="pt-4">
               <div className="flex gap-2">
                 <input
+                  ref={messageInputRef}
                   type="text"
                   placeholder="输入你的问题..."
                   value={input}
