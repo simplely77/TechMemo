@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, type MouseEvent } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,8 +9,11 @@ import {
   getMessages,
   type CreateSessionResp,
   type ChatMessageResp,
-  deleteSession
+  deleteSession,
+  updateSession
 } from "@/services/chatService"
+import { Input } from "@/components/ui/input"
+import { Pencil } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -36,6 +39,8 @@ export default function QAPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
+  const [renamingId, setRenamingId] = useState<number | null>(null)
+  const [renameDraft, setRenameDraft] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -118,11 +123,36 @@ export default function QAPage() {
 
   const handleCreateSession = async () => {
     try {
+      // 默认标题「新会话 N」由服务端按已有「新会话 数字」会话递增生成
       const session = await createSession()
       setSessions(prev => [session, ...prev])
       navigate(`/qa/${session.id}`)
     } catch (err) {
       console.error("Failed to create session", err)
+    }
+  }
+
+  const beginRename = (e: MouseEvent, session: CreateSessionResp) => {
+    e.stopPropagation()
+    setRenamingId(session.id)
+    setRenameDraft(session.title || "")
+  }
+
+  const applyRename = async (sessionId: number) => {
+    const title = renameDraft.trim()
+    if (!title) return
+    try {
+      const updated = await updateSession(sessionId, { title })
+      setSessions(prev =>
+        prev.map(s => (s.id === sessionId ? { ...s, title: updated.title, updated_at: updated.updated_at } : s))
+      )
+      setCurrentSession(cur =>
+        cur?.id === sessionId ? { ...cur, title: updated.title, updated_at: updated.updated_at } : cur
+      )
+      setRenamingId(null)
+      setRenameDraft("")
+    } catch (err) {
+      console.error("Failed to rename session", err)
     }
   }
 
@@ -238,27 +268,87 @@ const handleSendMessage = async () => {
                 {sessions.map(session => (
                   <li
                     key={session.id}
-                    className={`p-2 border flex items-center rounded cursor-pointer transition-all text-sm truncate ${currentSession?.id === session.id
+                    className={`p-2 border flex items-center gap-1 rounded cursor-pointer transition-all text-sm min-h-9 ${currentSession?.id === session.id
                       ? "bg-primary text-primary-foreground border-primary"
                       : "hover:bg-accent"
                       }`}
-                    onClick={() => navigate(`/qa/${session.id}`)}
+                    onClick={() => renamingId !== session.id && navigate(`/qa/${session.id}`)}
                   >
-                    {/* 左边标题 */}
-                    <span className="truncate flex-1">
-                      {session.title || `会话 ${session.id}`}
-                    </span>
-
-                    {/* 右边删除按钮 */}
-                    <button
-                      className="text-xs opacity-60 hover:opacity-100 ml-auto mr-2"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteSession(session.id);
-                      }}
-                    >
-                      ✕
-                    </button>
+                    {renamingId === session.id ? (
+                      <>
+                        <Input
+                          value={renameDraft}
+                          onChange={e => setRenameDraft(e.target.value)}
+                          className="flex-1 min-w-0 h-7 py-0 text-sm shadow-none bg-background text-foreground border-border focus-visible:ring-1"
+                          autoFocus
+                          onClick={e => e.stopPropagation()}
+                          onMouseDown={e => e.stopPropagation()}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              const t = renameDraft.trim()
+                              if (!t) {
+                                setRenamingId(null)
+                                setRenameDraft("")
+                                return
+                              }
+                              void applyRename(session.id)
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault()
+                              setRenamingId(null)
+                              setRenameDraft("")
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
+                            currentSession?.id === session.id
+                              ? "text-primary-foreground/90 hover:bg-primary-foreground/15"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                          }`}
+                          title="删除"
+                          aria-label="删除"
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleDeleteSession(session.id)
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="truncate flex-1 min-w-0">
+                          {session.title || `会话 ${session.id}`}
+                        </span>
+                        <button
+                          type="button"
+                          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
+                            currentSession?.id === session.id
+                              ? "text-primary-foreground/90 hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                          }`}
+                          title="重命名"
+                          aria-label="重命名"
+                          onClick={e => beginRename(e, session)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs opacity-60 hover:opacity-100 shrink-0"
+                          title="删除"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteSession(session.id)
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

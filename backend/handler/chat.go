@@ -22,12 +22,15 @@ import (
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param request body dto.CreateSessionReq false "可选标题；不传则自动生成「新会话 N」"
 // @Success 200 {object} response.Response{data=dto.CreateSessionResp}
 // @Router /api/v1/chat/sessions [post]
 func HandlerCreateSession(svc *service.ChatService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
-		session, err := svc.CreateSession(c.Request.Context(), userID)
+		var req dto.CreateSessionReq
+		_ = c.ShouldBindJSON(&req)
+		session, err := svc.CreateSession(c.Request.Context(), userID, req.Title)
 		if err != nil {
 			response.Fail(c, errors.InternalErr)
 			return
@@ -112,6 +115,48 @@ func HandlerDeleteSession(svc *service.ChatService) gin.HandlerFunc {
 			return
 		}
 		response.Success(c, nil)
+	}
+}
+
+// @Summary 更新会话标题
+// @Tags 聊天
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "会话ID"
+// @Param request body dto.UpdateSessionReq true "新标题"
+// @Success 200 {object} response.Response{data=dto.CreateSessionResp}
+// @Router /api/v1/chat/sessions/{id} [put]
+func HandlerUpdateSession(svc *service.ChatService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
+		sessionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			response.Fail(c, errors.InvalidParam)
+			return
+		}
+
+		var req dto.UpdateSessionReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Fail(c, errors.InvalidParam)
+			return
+		}
+
+		session, err := svc.UpdateSessionTitle(c.Request.Context(), sessionID, userID, req.Title)
+		if err != nil {
+			response.FailErr(c, err)
+			return
+		}
+		if session == nil {
+			response.Fail(c, errors.InternalErr)
+			return
+		}
+		response.Success(c, dto.CreateSessionResp{
+			ID:        session.ID,
+			Title:     session.Title,
+			CreatedAt: session.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt: session.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
 	}
 }
 

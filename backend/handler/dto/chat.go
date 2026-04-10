@@ -1,5 +1,13 @@
 package dto
 
+type CreateSessionReq struct {
+	Title string `json:"title"` // 可选；不传则服务端生成「新会话 N」
+}
+
+type UpdateSessionReq struct {
+	Title string `json:"title" binding:"required,min=1,max=200"`
+}
+
 type SendMessageReq struct {
 	Content string `json:"content" binding:"required,min=1,max=5000"`
 }

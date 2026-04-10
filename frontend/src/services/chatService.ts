@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from '@/utils/api'
+import { apiDelete, apiGet, apiPost, apiPut } from '@/utils/api'
 
 // ============ 类型定义 ============
 
@@ -6,6 +6,10 @@ const BASE_URL = 'http://localhost:8080/api/v1'
 
 export interface CreateSessionRequest {
   title?: string
+}
+
+export interface UpdateSessionRequest {
+  title: string
 }
 
 export interface CreateSessionResp {
@@ -48,6 +52,13 @@ export interface ChatMessageListResp {
  */
 export const createSession = (data?: CreateSessionRequest) => {
   return apiPost<CreateSessionResp>('/chat/sessions', data || {})
+}
+
+/**
+ * 更新会话标题（重命名）
+ */
+export const updateSession = (id: number, data: UpdateSessionRequest) => {
+  return apiPut<CreateSessionResp>(`/chat/sessions/${id}`, data)
 }
 
 /**

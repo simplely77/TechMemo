@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	aiclient "techmemo/backend/ai/client"
 	"techmemo/backend/common/errors"
@@ -21,12 +24,66 @@ type ChatService struct {
 	aiClient  aiclient.AIClient
 }
 
-// CreateSession 创建聊天会话
-func (s *ChatService) CreateSession(ctx context.Context, userID int64) (*model.ChatSession, error) {
+var titleNewSessionSeq = regexp.MustCompile(`^新会话\s*(\d+)\s*$`)
+
+func nextDefaultSessionTitle(sessions []*model.ChatSession) string {
+	maxN := 0
+	for _, sess := range sessions {
+		sub := titleNewSessionSeq.FindStringSubmatch(strings.TrimSpace(sess.Title))
+		if len(sub) == 2 {
+			n, err := strconv.Atoi(sub[1])
+			if err == nil && n > maxN {
+				maxN = n
+			}
+		}
+	}
+	return fmt.Sprintf("新会话 %d", maxN+1)
+}
+
+// CreateSession 创建聊天会话；explicitTitle 非空时作为标题，否则生成「新会话 N」递增名
+func (s *ChatService) CreateSession(ctx context.Context, userID int64, explicitTitle string) (*model.ChatSession, error) {
+	title := strings.TrimSpace(explicitTitle)
+	if title != "" {
+		if utf8.RuneCountInString(title) > 200 {
+			runes := []rune(title)
+			title = string(runes[:200])
+		}
+		return s.chatDao.CreateSession(ctx, dao.CreateSessionParams{
+			UserID: userID,
+			Title:  title,
+		})
+	}
+	sessions, _, err := s.chatDao.GetSessionsByUserID(ctx, userID, 2000, 0)
+	if err != nil {
+		return nil, err
+	}
+	title = nextDefaultSessionTitle(sessions)
 	return s.chatDao.CreateSession(ctx, dao.CreateSessionParams{
 		UserID: userID,
-		Title:  "新对话",
+		Title:  title,
 	})
+}
+
+// UpdateSessionTitle 更新会话标题（校验归属）
+func (s *ChatService) UpdateSessionTitle(ctx context.Context, sessionID, userID int64, title string) (*model.ChatSession, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, errors.InvalidParam
+	}
+	if utf8.RuneCountInString(title) > 200 {
+		return nil, errors.InvalidParam
+	}
+	ok, err := s.chatDao.CheckSessionBelongsToUser(ctx, sessionID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.Forbidden
+	}
+	if err := s.chatDao.UpdateSessionTitle(ctx, sessionID, title); err != nil {
+		return nil, err
+	}
+	return s.chatDao.GetSessionByID(ctx, sessionID)
 }
 
 // GetSessions 获取用户的会话列表

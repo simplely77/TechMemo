@@ -116,6 +116,7 @@ func SetupRouter(app *bootstrap.App) *gin.Engine {
 			{
 				chat.POST("/sessions", handler.HandlerCreateSession(app.ChatService))
 				chat.GET("/sessions", handler.HandlerGetSessions(app.ChatService))
+				chat.PUT("/sessions/:id", handler.HandlerUpdateSession(app.ChatService))
 				chat.DELETE("/sessions/:id", handler.HandlerDeleteSession(app.ChatService))
 				chat.POST("/sessions/:id/messages", handler.HandlerSendMessage(app.ChatService))
 				chat.POST("/sessions/:id/stream", handler.HandlerSendMessageStream(app.ChatService))
