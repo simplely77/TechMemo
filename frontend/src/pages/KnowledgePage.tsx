@@ -98,7 +98,7 @@ export default function KnowledgePage() {
   const selectedId = idParam && /^\d+$/.test(idParam) ? Number(idParam) : null
 
   return (
-    <div className="h-screen overflow-hidden p-6 box-border">
+    <div className="h-full min-h-0 overflow-hidden p-6 box-border">
       <div className="max-w-6xl mx-auto h-full flex flex-col">
         <div className="flex justify-between items-center mb-6 shrink-0">
           <h1 className="text-3xl font-bold">知识点库</h1>

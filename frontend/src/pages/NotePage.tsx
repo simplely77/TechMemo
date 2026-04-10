@@ -66,6 +66,11 @@ const obsidianInput =
 
 const NOTE_SIDEBAR_COLLAPSED_KEY = 'techmemo-note-sidebar-collapsed'
 
+/** 与后端 GetNoteAIStatus 一致：pending / processing 视为进行中 */
+function isNoteAiBusy(status: string): boolean {
+    return status === 'processing' || status === 'pending'
+}
+
 const markdownRemarkPlugins = [remarkGfm, remarkMath, remarkBreaks]
 const markdownRehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = [
     rehypeRaw,
@@ -116,9 +121,9 @@ export default function NotePage() {
     const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
     const [showTagForm, setShowTagForm] = useState(false)
     const [newTagNameInSidebar, setNewTagNameInSidebar] = useState('')
-    // AI 处理状态
-    const [aiProcessing, setAiProcessing] = useState(false)
-    const [aiStatus, setAiStatus] = useState<string>('')
+    // 当前选中笔记的 AI 状态（切换笔记时会重新拉取 /ai/note/:id/status）
+    const [noteAiStatus, setNoteAiStatus] = useState<string>('')
+    const [noteAiStatusLoading, setNoteAiStatusLoading] = useState(false)
     const [versionsSubNoteId, setVersionsSubNoteId] = useState<number | null>(null)
     const [versionsList, setVersionsList] = useState<NoteVersion[]>([])
     const [versionsLoading, setVersionsLoading] = useState(false)
@@ -159,32 +164,63 @@ export default function NotePage() {
         loadAllTags()
     }, [])
 
-    // 轮询 AI 处理状态
+    // 选中笔记变化时查询该笔记的 AI 状态（not_started / completed / failed 等均可再次触发处理）
     useEffect(() => {
-        if (!selectedNote || !aiProcessing) return
-
-        const pollStatus = async () => {
+        const noteId = selectedNote?.id
+        if (noteId == null) {
+            setNoteAiStatus('')
+            setNoteAiStatusLoading(false)
+            return
+        }
+        let cancelled = false
+        setNoteAiStatusLoading(true)
+        setNoteAiStatus('')
+        ;(async () => {
             try {
-                const status = await getNoteAIStatus(selectedNote.id)
-                setAiStatus(status.status || '')
+                const res = await getNoteAIStatus(noteId)
+                if (cancelled) return
+                setNoteAiStatus(res.status || 'not_started')
+            } catch (err) {
+                console.error(err)
+                if (!cancelled) setNoteAiStatus('not_started')
+            } finally {
+                if (!cancelled) setNoteAiStatusLoading(false)
+            }
+        })()
+        return () => {
+            cancelled = true
+        }
+    }, [selectedNote?.id])
 
-                // 如果处理完成，停止轮询
-                if (status.status === 'completed' || status.status === 'failed') {
-                    setAiProcessing(false)
-                    if (status.status === 'completed') {
-                        alert('AI 处理完成')
-                    } else {
-                        alert('AI 处理失败')
+    // 当前笔记处于 pending/processing 时轮询，直到 completed / failed
+    useEffect(() => {
+        if (!selectedNote || !isNoteAiBusy(noteAiStatus)) return
+        const noteId = selectedNote.id
+
+        const poll = async () => {
+            try {
+                const res = await getNoteAIStatus(noteId)
+                const st = res.status || ''
+                setNoteAiStatus(prev => {
+                    const wasBusy = isNoteAiBusy(prev)
+                    const nowTerminal = st === 'completed' || st === 'failed'
+                    if (wasBusy && nowTerminal) {
+                        queueMicrotask(() => {
+                            if (st === 'completed') alert('AI 处理完成')
+                            else alert('AI 处理失败')
+                        })
                     }
-                }
+                    return st
+                })
             } catch (err) {
                 console.error(err)
             }
         }
 
-        const interval = setInterval(pollStatus, 2000) // 每2秒轮询一次
+        void poll()
+        const interval = setInterval(poll, 2000)
         return () => clearInterval(interval)
-    }, [selectedNote, aiProcessing])
+    }, [selectedNote?.id, noteAiStatus])
 
     // 键盘快捷键：保存
     useEffect(() => {
@@ -550,15 +586,12 @@ export default function NotePage() {
     // AI 处理笔记
     const handleProcessAI = async () => {
         if (!selectedNote) return
-        setAiProcessing(true)
-        setAiStatus('processing')
+        if (noteAiStatusLoading || isNoteAiBusy(noteAiStatus)) return
         try {
             await processNoteAI(selectedNote.id)
+            setNoteAiStatus('processing')
         } catch (err) {
             console.error(err)
-            alert('AI 处理失败')
-            setAiProcessing(false)
-            setAiStatus('')
         }
     }
 
@@ -593,7 +626,7 @@ export default function NotePage() {
         editingContent !== selectedNote.content_md
 
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-background">
+        <div className="flex h-full min-h-0 w-full overflow-hidden bg-background">
             {/* 左侧边栏 — 可折叠 */}
             <div
                 className={`flex shrink-0 flex-col overflow-hidden border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,min-width] duration-200 ease-out ${
@@ -1108,11 +1141,17 @@ export default function NotePage() {
                                 <button
                                     type="button"
                                     onClick={handleProcessAI}
-                                    disabled={aiProcessing}
+                                    disabled={noteAiStatusLoading || isNoteAiBusy(noteAiStatus)}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-border bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                    title={aiProcessing ? `AI 处理中: ${aiStatus}` : 'AI 分析'}
+                                    title={
+                                        noteAiStatusLoading
+                                            ? '正在查询 AI 状态…'
+                                            : isNoteAiBusy(noteAiStatus)
+                                              ? `AI 处理中: ${noteAiStatus}`
+                                              : 'AI 分析'
+                                    }
                                 >
-                                    {aiProcessing ? (
+                                    {noteAiStatusLoading || isNoteAiBusy(noteAiStatus) ? (
                                         <Loader2 className="h-4 w-4 animate-spin text-violet-600 dark:text-violet-400" />
                                     ) : (
                                         <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />

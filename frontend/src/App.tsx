@@ -9,6 +9,7 @@ import SearchPage from './pages/SearchPage'
 import QAPage from './pages/QAPage'
 import StatsPage from './pages/StatsPage'
 import MindmapPage from './pages/MindmapPage'
+import ProtectedLayout from './components/ProtectedLayout'
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.token)
@@ -23,13 +24,15 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route element={<ProtectedRoute/>}>
-          <Route path="/home" element={<HomePage/>} />
-          <Route path="/note/:id?" element={<NotePage/>} />
-          <Route path="/knowledge/:id?" element={<KnowledgePage/>} />
-          <Route path="/search" element={<SearchPage/>} />
-          <Route path="/qa/:sessionId?" element={<QAPage/>} />
-          <Route path="/stats" element={<StatsPage/>} />
-          <Route path="/mindmap/:scope?" element={<MindmapPage/>} />
+          <Route element={<ProtectedLayout />}>
+            <Route path="/home" element={<HomePage/>} />
+            <Route path="/note/:id?" element={<NotePage/>} />
+            <Route path="/knowledge/:id?" element={<KnowledgePage/>} />
+            <Route path="/search" element={<SearchPage/>} />
+            <Route path="/qa/:sessionId?" element={<QAPage/>} />
+            <Route path="/stats" element={<StatsPage/>} />
+            <Route path="/mindmap/:scope?" element={<MindmapPage/>} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

@@ -444,7 +444,7 @@ export default function MindmapPage() {
 
 
   return (
-    <div className="h-screen overflow-hidden p-6 box-border">
+    <div className="h-full min-h-0 overflow-hidden p-6 box-border">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">思维导图</h1>

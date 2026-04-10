@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { House } from 'lucide-react'
+import { toast } from 'sonner'
 import { login } from '../services/authService'
 import { useAuthStore } from '../store/authStore'
 import { Button } from "@/components/ui/button"
@@ -16,6 +18,7 @@ import { Label } from "@/components/ui/label"
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const token = useAuthStore((s) => s.token)
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const [form, setForm] = useState({ username: '', password: '' })
@@ -40,8 +43,23 @@ export default function LoginPage() {
     }
   }
 
+  const goHome = () => {
+    if (token) navigate('/home')
+    else toast.message('请先登录后再进入首页')
+  }
+
   return (
-    <div className="min-h-screen grid place-items-center">
+    <div className="relative min-h-screen grid place-items-center">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="absolute left-4 top-4 z-10 gap-1.5 text-muted-foreground"
+        onClick={goHome}
+      >
+        <House className="h-4 w-4 shrink-0" aria-hidden />
+        返回首页
+      </Button>
       <Card className="w-full max-w-sm">
         <CardHeader className="flex flex-col items-center">
           <CardTitle className="text-2xl font-bold">登录</CardTitle>
