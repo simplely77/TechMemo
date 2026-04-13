@@ -28,11 +28,11 @@ type SearchHistoryItem struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// SemanticSearchReq 语义搜索请求
+// SemanticSearchReq 语义搜索请求（混合检索：向量 + 关键词）
 type SemanticSearchReq struct {
 	Query      string `json:"query" binding:"required"`
 	SearchType string `json:"search_type" binding:"required,oneof=note knowledge"`
-	TopK       int    `json:"top_k" binding:"required,min=1,max=20"`
+	TopK       int    `json:"top_k" binding:"required,min=1,max=100"`
 }
 
 // SemanticSearchResp 语义搜索响应
@@ -48,7 +48,8 @@ type SearchResultItem struct {
 	Type       string  `json:"type"` // "note" 或 "knowledge"
 	Title      string  `json:"title"`
 	Content    string  `json:"content"`
-	Similarity float64 `json:"similarity"` // 相似度分数 (0-1)
+	Similarity float64 `json:"similarity"` // 无 rerank 时为 RRF 融合分约 0–1；有 rerank 时为 sigmoid(原始分) 约 0–1
+	RerankScore *float64 `json:"rerank_score,omitempty"` // CrossEncoder 原始分，仅启用 rerank 且成功时返回
 
 	// Note 特有字段
 	NoteType string        `json:"note_type,omitempty"`

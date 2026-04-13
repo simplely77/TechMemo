@@ -10,6 +10,9 @@ import { Clock } from "lucide-react"
 
 type SearchType = "note" | "knowledge"
 
+/** 与后端 SemanticSearchReq.top_k（max=100）对齐，列表默认条数 */
+const DEFAULT_SEMANTIC_TOP_K = 8
+
 function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
 }
@@ -74,7 +77,7 @@ export default function SearchPage() {
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([])
 
   useEffect(() => {
-    getSearchHistory(1, 20, enabled ? "semantic" : "keyword", searchType).then((res) => {
+    getSearchHistory(1, 20, enabled ? "hybrid" : "keyword", searchType).then((res) => {
       setSearchHistory(res.items)
     })
     setResults([])
@@ -94,11 +97,11 @@ export default function SearchPage() {
       let searchResults: SearchResult[] = []
 
       if (enabled) {
-        // 语义搜索
+        // 混合检索：向量 + 关键词 + 服务端 rerank（见后端 /search/semantic）
         const res = await semanticSearch({
           query: trimmed,
           search_type: searchType,
-          top_k: 20
+          top_k: DEFAULT_SEMANTIC_TOP_K,
         })
         searchResults = res.results || []
       } else {
@@ -142,10 +145,9 @@ export default function SearchPage() {
       }
 
       setResults(searchResults)
-      getSearchHistory(1, 20, enabled ? "semantic" : "keyword", searchType)
+      getSearchHistory(1, 20, enabled ? "hybrid" : "keyword", searchType)
         .then((res) => setSearchHistory(res.items))
         .catch(() => {})
-      console.log("searchHistory", searchHistory)
     } catch (err) {
       console.error("搜索失败:", err)
       setResults([])
@@ -157,7 +159,7 @@ export default function SearchPage() {
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">语义搜索</h1>
+        <h1 className="text-3xl font-bold mb-6">搜索</h1>
 
         {/* 搜索框 */}
         <Card className="mb-6">
@@ -189,7 +191,7 @@ export default function SearchPage() {
                   </span>
                   <Switch checked={enabled} onCheckedChange={setEnabled} className="bg-muted data-[state=checked]:bg-muted [&>span]:bg-white data-[state=checked]:[&>span]:bg-white" />
                   <span className={enabled ? "font-medium" : "text-muted-foreground"}>
-                    语义
+                    混合
                   </span>
                 </div>
               </div>
@@ -260,7 +262,10 @@ export default function SearchPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="truncate text-sm text-foreground">{item.keyword}</div>
                                 <div className="truncate text-xs text-muted-foreground">
-                                  {item.search_type === "semantic" ? "语义" : "关键词"} ·{" "}
+                                  {item.search_type === "hybrid" || item.search_type === "semantic"
+                                    ? "混合"
+                                    : "关键词"}{" "}
+                                  ·{" "}
                                   {item.target_type === "note" ? "笔记" : "知识点"}
                                 </div>
                               </div>
@@ -304,8 +309,18 @@ export default function SearchPage() {
                           {result.title}
                         </CardTitle>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {result.type === "note" ? "笔记" : "知识点"} · 相关度:{" "}
-                          {(result.similarity * 100).toFixed(0)}%
+                          {result.type === "note" ? "笔记" : "知识点"}
+                          {enabled ? (
+                            <>
+                              {" "}
+                              ·{" "}
+                              {result.rerank_score !== undefined && result.rerank_score !== null ? (
+                                <>相关分: {result.rerank_score.toFixed(4)}</>
+                              ) : (
+                                <>相关度: {(result.similarity * 100).toFixed(0)}%</>
+                              )}
+                            </>
+                          ) : null}
                         </p>
                       </div>
                     </div>

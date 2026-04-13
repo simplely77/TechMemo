@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"strings"
 	"techmemo/backend/model"
 	"techmemo/backend/query"
 	"time"
@@ -10,6 +11,14 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// likeSubstringPattern 构造 ILIKE 子串匹配的 pattern，并转义 % _ \
+func likeSubstringPattern(q string) string {
+	q = strings.ReplaceAll(q, `\`, `\\`)
+	q = strings.ReplaceAll(q, `%`, `\%`)
+	q = strings.ReplaceAll(q, `_`, `\_`)
+	return "%" + q + "%"
+}
 
 type SearchDao struct {
 	q  *query.Query
@@ -23,21 +32,17 @@ type SearchResult struct {
 	Distance   float64
 }
 
-// SearchEmbeddingsByVector 使用向量搜索 embedding 表
-// 使用余弦距离 <=> 操作符，返回最相似的 topK 个结果
+// SearchEmbeddingsByVector 使用向量搜索 embedding 表。
+// 使用 pgvector 余弦距离 <=>，按距离升序取 topK（不做额外距离阈值，避免误杀相关结果）。
 func (d *SearchDao) SearchEmbeddingsByVector(
 	ctx context.Context,
 	vector []float32,
 	targetType string,
 	userID int64,
 	topK int,
-	threshold float32,
 ) ([]SearchResult, error) {
 	var results []SearchResult
 
-	// 构建 SQL 查询
-	// 使用 pgvector 的余弦距离操作符 <=>
-	// 需要 JOIN 对应的表来过滤 user_id
 	var querySQL string
 	switch targetType {
 	case "note":
@@ -48,7 +53,6 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 			WHERE e.target_type = 'note'
 			  AND n.user_id = $2
 			  AND n.status != 'deleted'
-			  AND (e.vector <=> $1) < $4
 			ORDER BY distance
 			LIMIT $3
 		`
@@ -59,7 +63,6 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 			INNER JOIN knowledge_point kp ON e.target_id = kp.id
 			WHERE e.target_type = 'knowledge'
 			  AND kp.user_id = $2
-			  AND (e.vector <=> $1) < $4
 			ORDER BY distance
 			LIMIT $3
 		`
@@ -72,10 +75,62 @@ func (d *SearchDao) SearchEmbeddingsByVector(
 		pgvector.NewVector(vector),
 		userID,
 		topK,
-		threshold,
 	).Scan(&results).Error
 
 	return results, err
+}
+
+// SearchNoteIDsByKeyword 标题/正文子串匹配（ILIKE），按标题优先、更新时间倒序，返回有序 ID。
+func (d *SearchDao) SearchNoteIDsByKeyword(
+	ctx context.Context,
+	userID int64,
+	query string,
+	limit int,
+) ([]int64, error) {
+	q := strings.TrimSpace(query)
+	if q == "" || limit <= 0 {
+		return nil, nil
+	}
+	pat := likeSubstringPattern(q)
+	var ids []int64
+	err := d.db.WithContext(ctx).Raw(`
+		SELECT id FROM note
+		WHERE user_id = ?
+		  AND status != 'deleted'
+		  AND (title ILIKE ? ESCAPE '\'
+		   OR content_md ILIKE ? ESCAPE '\')
+		ORDER BY
+		  CASE WHEN title ILIKE ? ESCAPE '\' THEN 0 ELSE 1 END,
+		  updated_at DESC
+		LIMIT ?
+	`, userID, pat, pat, pat, limit).Scan(&ids).Error
+	return ids, err
+}
+
+// SearchKnowledgeIDsByKeyword 名称/描述子串匹配，名称优先。
+func (d *SearchDao) SearchKnowledgeIDsByKeyword(
+	ctx context.Context,
+	userID int64,
+	query string,
+	limit int,
+) ([]int64, error) {
+	q := strings.TrimSpace(query)
+	if q == "" || limit <= 0 {
+		return nil, nil
+	}
+	pat := likeSubstringPattern(q)
+	var ids []int64
+	err := d.db.WithContext(ctx).Raw(`
+		SELECT id FROM knowledge_point
+		WHERE user_id = ?
+		  AND (name ILIKE ? ESCAPE '\'
+		   OR COALESCE(description, '') ILIKE ? ESCAPE '\')
+		ORDER BY
+		  CASE WHEN name ILIKE ? ESCAPE '\' THEN 0 ELSE 1 END,
+		  id DESC
+		LIMIT ?
+	`, userID, pat, pat, pat, limit).Scan(&ids).Error
+	return ids, err
 }
 
 func NewSearchDao(q *query.Query, db *gorm.DB) *SearchDao {

@@ -361,7 +361,7 @@ const handleSendMessage = async () => {
 
         {/* 右侧聊天区域 */}
         <div className="flex-1 flex flex-col">
-          <h1 className="text-3xl font-bold mb-6">智能问答</h1>
+          <h1 className="text-3xl font-bold mb-6">知识库问答</h1>
 
           <Card className="flex-1 flex flex-col mb-4">
             <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">

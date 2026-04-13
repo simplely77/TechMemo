@@ -31,9 +31,9 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret                   string `mapstructure:"secret"`
-	AccessTokenExpireHour    int    `mapstructure:"access_token_expire_hour"`
-	RefreshTokenExpireDay    int    `mapstructure:"refresh_token_expire_day"`
+	Secret                string `mapstructure:"secret"`
+	AccessTokenExpireHour int    `mapstructure:"access_token_expire_hour"`
+	RefreshTokenExpireDay int    `mapstructure:"refresh_token_expire_day"`
 }
 
 type RedisConfig struct {
@@ -48,6 +48,7 @@ type RedisConfig struct {
 type AIConfig struct {
 	Chat      ProviderConfig `mapstructure:"chat"`      // 对话用
 	Embedding ProviderConfig `mapstructure:"embedding"` // 向量用
+	Rerank    ProviderConfig `mapstructure:"rerank"`    // 重排序用
 }
 
 type ProviderConfig struct {

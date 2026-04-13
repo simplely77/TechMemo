@@ -32,6 +32,10 @@ type AIClient interface {
 	ChatStream(ctx context.Context, message []ChatMessage, onDelta func(string) bool) error
 	// 全局思维导图 - 分析多个顶节点之间的关联关系
 	BuildGlobalMindMap(ctx context.Context, nodes []GlobalNode) ([]GlobalRelation, error)
+	// 重排序 - 根据查询和文档列表，返回每个文档的得分
+	Rerank(ctx context.Context, query string, documents []string) ([]float64, error)
+	// RerankEnabled 当配置了 rerank.base_url 时为 true
+	RerankEnabled() bool
 	// 获取当前使用的模型名称
 	GetChatModelName() string
 	// 获取当前使用的向量模型名称
@@ -46,11 +50,16 @@ func (a *OpenAIClient) GetEmbeddingModelName() string {
 	return a.embeddingModel
 }
 
+func (c *OpenAIClient) RerankEnabled() bool {
+	return strings.TrimSpace(c.rerankBaseURL) != ""
+}
+
 type OpenAIClient struct {
 	chatClient       *openai.Client // 对话专用
 	embeddingBaseURL string         // 本地向量服务地址
 	chatModel        string
 	embeddingModel   string
+	rerankBaseURL    string
 }
 
 const maxRetries = 3
@@ -61,6 +70,7 @@ func NewOpenAIClientFromConfig(cfg *config.Config) *OpenAIClient {
 		chatModel:        cfg.AI.Chat.Model,
 		embeddingModel:   cfg.AI.Embedding.Model,
 		embeddingBaseURL: cfg.AI.Embedding.BaseURL,
+		rerankBaseURL:    cfg.AI.Rerank.BaseURL,
 	}
 
 	chatConfig := openai.DefaultConfig(cfg.AI.Chat.APIKey)
@@ -124,13 +134,28 @@ func (c *OpenAIClient) ClassifyNoteType(ctx context.Context, content string) (st
 	}
 
 	prompt := `
-请判断以下笔记内容是否值得进行后续 AI 知识处理，并返回最合适的类型：
+请判断以下笔记内容是否值得进行 AI 知识抽取：
 
-- knowledge：内容包含明确、可总结、可抽取的知识点，适合生成结构化知识
-- reference：内容主要是资料、命令、配置、链接或参考信息，仅用于检索
-- ignore：内容是个人记录、情绪、草稿，或不具备知识价值
+- extract：内容包含可复用的知识（概念、原理、实现方法、经验、配置等），适合结构化整理
+- ignore：内容为随手记录、情绪、无结构信息或无复用价值
 
-请只返回 knowledge、reference 或 ignore，不要输出任何其他内容。
+【判断标准（必须遵守）】
+1. 只要包含以下任意一种，即判定为 extract：
+   - 明确概念或定义
+   - 技术原理或解释
+   - 可复用的实现方式（代码、命令、配置）
+   - 有通用价值的经验或总结
+
+2. 以下情况判定为 ignore：
+   - 纯个人记录（如 TODO、日记）
+   - 零散片段且无法理解上下文
+   - 无实际技术或知识价值
+
+【输出要求】
+- 只返回 extract 或 ignore
+- 不要输出任何解释或其他内容
+
+【笔记内容】
 `
 
 	result, err := c.ProcessText(ctx, prompt, content)
@@ -141,7 +166,7 @@ func (c *OpenAIClient) ClassifyNoteType(ctx context.Context, content string) (st
 	result = strings.TrimSpace(strings.ToLower(result))
 
 	switch result {
-	case "knowledge", "reference", "ignore":
+	case "extract", "ignore":
 		return result, nil
 	default:
 		// LLM 偶尔不听话，兜底
@@ -152,34 +177,48 @@ func (c *OpenAIClient) ClassifyNoteType(ctx context.Context, content string) (st
 // 知识抽取 - 专注于README中描述的知识点抽取功能
 func (c *OpenAIClient) ExtractKnowledgePoints(ctx context.Context, content string) ([]KnowledgePoint, error) {
 	prompt := `
-请从技术笔记中抽取知识结构。
+请从技术笔记中抽取结构化知识点。
 
-【硬性约束（必须严格遵守）】
+【目标】
+构建“可用于知识库沉淀”的知识结构，既包含抽象概念，也包含关键实现与实用技巧。
 
-总节点数 ≤ 20（超过视为失败）
-层级 ≤ 3
-每个节点最多 3 个 children
-description ≤ 20 字
+【约束（必须遵守）】
+- 总节点数 ≤ 100
+- 层级 ≤ 6
+- 每个节点最多 8 个 children
+- description ≤ 100 字
 
-【选择策略（必须执行）】
-如果信息过多：
+【抽取策略（必须执行）】
+1. 优先抽取以下三类内容：
+   - 核心概念（是什么）
+   - 关键原理（为什么）
+   - 实用实现（怎么做）
 
-优先保留抽象概念（如“布局系统”）
-删除具体实现（如“justify-between”）
-删除低重要性节点（importanceScore < 0.7）
+2. 不要删除具体实现，尤其是：
+   - 常见写法（如 API / 代码模式）
+   - 关键配置（如参数、命令）
+   - 典型用法（如使用场景）
+
+3. 删除或弱化以下内容：
+   - 纯样式/低层细节（如无意义参数组合）
+   - 重复信息
+   - 重要性较低（importanceScore < 0.6）
+
+4. 抽象与具体要平衡：
+   - 每个抽象节点下，至少包含1个具体实现或示例
 
 【生成要求】
+- 在输出前先规划节点数量，确保不超过限制
+- 结构要有逻辑层次（由抽象到具体）
+- importanceScore 取值范围 [0,1]，保留两位小数
+- 只返回完整 JSON，不要解释
 
-在输出前先规划节点数量
-确保不会超过限制
-只返回完整 JSON
-返回JSON：
-
+【输出格式】
 {
   "knowledgePoints": {
     "name": "",
     "description": "",
-    "importanceScore": 0.5,
+    "importanceScore": 0.8,
     "children": [
       {
         "name": "",
@@ -191,7 +230,7 @@ description ≤ 20 字
   }
 }
 
-技术笔记如下：
+【技术笔记】
 `
 
 	result, err := c.ProcessText(ctx, prompt, content)
@@ -423,4 +462,68 @@ func (c *OpenAIClient) ChatStream(
 		}
 	}
 	return nil
+}
+
+func (c *OpenAIClient) Rerank(ctx context.Context, query string, documents []string) ([]float64, error) {
+	if len(documents) == 0 {
+		return nil, nil
+	}
+	base := strings.TrimRight(strings.TrimSpace(c.rerankBaseURL), "/")
+	if base == "" {
+		return nil, fmt.Errorf("重排序服务未配置")
+	}
+
+	type reqBody struct {
+		Query     string   `json:"query"`
+		Documents []string `json:"documents"`
+	}
+	type respBody struct {
+		Scores []float64 `json:"scores"`
+	}
+
+	const maxRetries = 3
+	var lastErr error
+	for i := range maxRetries {
+		body, err := json.Marshal(reqBody{Query: query, Documents: documents})
+		if err != nil {
+			return nil, fmt.Errorf("序列化重排序请求失败: %w", err)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/rerank", bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("构建重排序请求失败: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			lastErr = err
+		} else {
+			if resp.StatusCode >= 500 {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("重排序服务返回 %d", resp.StatusCode)
+			} else if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				return nil, fmt.Errorf("重排序服务返回 %d", resp.StatusCode)
+			} else {
+				var result respBody
+				if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+					resp.Body.Close()
+					lastErr = fmt.Errorf("解析重排序响应失败: %w", err)
+				} else {
+					resp.Body.Close()
+					if len(result.Scores) != len(documents) {
+						return nil, fmt.Errorf("重排序结果条数与文档不一致: %d != %d", len(result.Scores), len(documents))
+					}
+					return result.Scores, nil
+				}
+			}
+		}
+		wait := time.Duration(1<<i) * time.Second
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return nil, fmt.Errorf("重排序失败（重试%d次）: %w", maxRetries, lastErr)
 }

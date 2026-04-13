@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary 语义搜索
-// @Description 基于向量相似度搜索笔记或知识点
+// @Summary 语义搜索（混合检索）
+// @Description 向量相似度 + 标题/正文关键词子串匹配，RRF 融合排序
 // @Tags 搜索
 // @Security BearerAuth
 // @Accept json

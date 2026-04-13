@@ -205,7 +205,7 @@ func (a *AIService) handleClassify(ctx context.Context, logItem *model.AiProcess
 	}
 
 	switch noteType {
-	case "knowledge":
+	case "extract":
 		_ = a.aiDao.CreateAILog(ctx, dao.CreateAILogParams{
 			SourceNoteID: logItem.SourceNoteID,
 			TaskID:       logItem.TaskID,
@@ -215,17 +215,6 @@ func (a *AIService) handleClassify(ctx context.Context, logItem *model.AiProcess
 			ModelName:    a.aiClient.GetChatModelName(),
 			Status:       "pending",
 		})
-		_ = a.aiDao.CreateAILog(ctx, dao.CreateAILogParams{
-			SourceNoteID: logItem.SourceNoteID,
-			TaskID:       logItem.TaskID,
-			TargetType:   "note",
-			TargetID:     logItem.TargetID,
-			ProcessType:  "embedding",
-			ModelName:    a.aiClient.GetEmbeddingModelName(),
-			Status:       "pending",
-		})
-		_ = a.queue.Publish(queue.AITask{TaskID: logItem.TaskID})
-	case "reference":
 		_ = a.aiDao.CreateAILog(ctx, dao.CreateAILogParams{
 			SourceNoteID: logItem.SourceNoteID,
 			TaskID:       logItem.TaskID,

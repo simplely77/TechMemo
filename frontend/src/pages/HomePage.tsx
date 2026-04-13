@@ -51,13 +51,13 @@ export default function HomePage() {
       action: () => navigate('/mindmap')
     },
     {
-      title: '语义搜索',
+      title: '搜索',
       description: '智能搜索笔记和知识点',
       icon: '🔍',
       action: () => navigate('/search')
     },
     {
-      title: '智能问答',
+      title: '知识库问答',
       description: '基于你的知识库回答问题',
       icon: '💬',
       action: () => navigate('/qa')

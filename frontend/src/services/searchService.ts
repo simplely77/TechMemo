@@ -6,6 +6,8 @@ export interface SearchResult {
   title: string
   content: string
   similarity: number
+  /** CrossEncoder 原始分，仅混合检索且 rerank 成功时存在 */
+  rerank_score?: number
   created_at: string
   // Note 特有字段
   note_type?: string
@@ -22,7 +24,7 @@ export interface SearchResult {
 export interface SemanticSearchRequest {
   query: string
   search_type: string  // 必需：'note' 或 'knowledge'
-  top_k: number        // 必需：1-20
+  top_k: number        // 必需：与后端一致，1–100
 }
 
 export interface SemanticSearchResponse {
