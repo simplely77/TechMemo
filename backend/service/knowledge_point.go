@@ -37,6 +37,27 @@ func (s *KnowledgePointService) GetKnowledgePoints(ctx context.Context, req *dto
 		return nil, errors.InternalErr
 	}
 
+	noteIDSet := make(map[int64]struct{})
+	for _, kp := range knowledgePoints {
+		if kp.SourceNoteID > 0 {
+			noteIDSet[kp.SourceNoteID] = struct{}{}
+		}
+	}
+	noteIDs := make([]int64, 0, len(noteIDSet))
+	for id := range noteIDSet {
+		noteIDs = append(noteIDs, id)
+	}
+	titleByNoteID := make(map[int64]string, len(noteIDs))
+	if len(noteIDs) > 0 {
+		notes, err := s.noteDao.GetNotesByIDs(ctx, noteIDs)
+		if err != nil {
+			return nil, errors.InternalErr
+		}
+		for _, n := range notes {
+			titleByNoteID[n.ID] = n.Title
+		}
+	}
+
 	items := make([]dto.KnowledgePointItem, 0, len(knowledgePoints))
 	for _, kp := range knowledgePoints {
 		item := dto.KnowledgePointItem{
@@ -47,11 +68,9 @@ func (s *KnowledgePointService) GetKnowledgePoints(ctx context.Context, req *dto
 			SourceNoteID:    kp.SourceNoteID,
 			CreatedAt:       kp.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		}
-
 		if kp.SourceNoteID > 0 {
-			note, err := s.noteDao.GetNoteByID(ctx, kp.SourceNoteID)
-			if err == nil && note != nil {
-				item.SourceNoteTitle = note.Title
+			if t, ok := titleByNoteID[kp.SourceNoteID]; ok {
+				item.SourceNoteTitle = t
 			}
 		}
 

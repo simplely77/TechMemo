@@ -2,6 +2,8 @@ package dao
 
 import (
 	"context"
+	"math"
+	"sort"
 	"strings"
 	"techmemo/backend/model"
 	"techmemo/backend/query"
@@ -11,6 +13,121 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+const (
+	// RRFK Reciprocal Rank Fusion 平滑常数（常用 60）
+	RRFK = 60.0
+	hybridMinFetch = 5
+	hybridMaxFetch = 100
+)
+
+// HybridFetchN 混合检索时每路候选条数：约为 topK 的 3 倍，夹在 [5,100]，与语义搜索 API 一致。
+func HybridFetchN(topK int) int {
+	n := topK * 3
+	if n < hybridMinFetch {
+		n = hybridMinFetch
+	}
+	if n > hybridMaxFetch {
+		n = hybridMaxFetch
+	}
+	return n
+}
+
+// MergeRRF 合并向量检索结果与关键词命中的 ID 列表（两路均为 1-based 名次），按融合分降序返回 ID 及归一化相似度 [0,1]；outLimit 为融合后保留的最大条数。
+func MergeRRF(vec []SearchResult, kwIDs []int64, outLimit int) (ordered []int64, similarityByID map[int64]float64) {
+	type acc struct{ score float64 }
+	m := make(map[int64]*acc)
+	for i, sr := range vec {
+		r := i + 1
+		a := m[sr.TargetID]
+		if a == nil {
+			a = &acc{}
+			m[sr.TargetID] = a
+		}
+		a.score += 1.0 / (RRFK + float64(r))
+	}
+	for i, id := range kwIDs {
+		r := i + 1
+		a := m[id]
+		if a == nil {
+			a = &acc{}
+			m[id] = a
+		}
+		a.score += 1.0 / (RRFK + float64(r))
+	}
+	type pair struct {
+		id    int64
+		score float64
+	}
+	pairs := make([]pair, 0, len(m))
+	for id, a := range m {
+		pairs = append(pairs, pair{id: id, score: a.score})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].score != pairs[j].score {
+			return pairs[i].score > pairs[j].score
+		}
+		return pairs[i].id < pairs[j].id
+	})
+	if outLimit > 0 && len(pairs) > outLimit {
+		pairs = pairs[:outLimit]
+	}
+	ordered = make([]int64, len(pairs))
+	similarityByID = make(map[int64]float64, len(pairs))
+	for i, p := range pairs {
+		ordered[i] = p.id
+		// 单路第一名 score≈1/(RRFK+1)，乘 (RRFK+1) 映射到约 1
+		similarityByID[p.id] = math.Min(1.0, p.score*(RRFK+1))
+	}
+	return ordered, similarityByID
+}
+
+// HybridSearchEmbeddings 对笔记或知识点做「向量 + 关键词子串」混合检索（RRF），返回最多 topK 条，与 /search/semantic 前两步一致（不含 CrossEncoder rerank）。
+func (d *SearchDao) HybridSearchEmbeddings(
+	ctx context.Context,
+	vector []float32,
+	userID int64,
+	queryText string,
+	targetType string,
+	topK int,
+) ([]SearchResult, error) {
+	if topK <= 0 {
+		return nil, nil
+	}
+	fetchN := HybridFetchN(topK)
+	vec, err := d.SearchEmbeddingsByVector(ctx, vector, targetType, userID, fetchN)
+	if err != nil {
+		return nil, err
+	}
+	var kwIDs []int64
+	switch targetType {
+	case "note":
+		kwIDs, err = d.SearchNoteIDsByKeyword(ctx, userID, queryText, fetchN)
+	case "knowledge":
+		kwIDs, err = d.SearchKnowledgeIDsByKeyword(ctx, userID, queryText, fetchN)
+	default:
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	orderedIDs, simByID := MergeRRF(vec, kwIDs, fetchN)
+	if len(orderedIDs) == 0 {
+		return nil, nil
+	}
+	if len(orderedIDs) > topK {
+		orderedIDs = orderedIDs[:topK]
+	}
+	out := make([]SearchResult, 0, len(orderedIDs))
+	for _, id := range orderedIDs {
+		out = append(out, SearchResult{
+			TargetID:   id,
+			TargetType: targetType,
+			Distance:   1.0 - simByID[id],
+		})
+	}
+	return out, nil
+}
 
 // likeSubstringPattern 构造 ILIKE 子串匹配的 pattern，并转义 % _ \
 func likeSubstringPattern(q string) string {

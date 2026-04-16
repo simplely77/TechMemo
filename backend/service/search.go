@@ -13,72 +13,9 @@ import (
 )
 
 const (
-	rrfK           = 60.0 // Reciprocal Rank Fusion 平滑常数（常用 60）
-	hybridMinFetch = 5
-	hybridMaxFetch = 100
 	// rerank 送入 CrossEncoder 的正文长度上限（与 embedding 用全文索引对齐思路）
 	rerankDocMaxRunes = 200
 )
-
-func hybridFetchSize(topK int) int {
-	n := topK * 3
-	if n < hybridMinFetch {
-		n = hybridMinFetch
-	}
-	if n > hybridMaxFetch {
-		n = hybridMaxFetch
-	}
-	return n
-}
-
-// mergeRRF 合并向量列表与关键词 ID 列表（均为 1-based 名次），返回按融合分降序的 ID 及归一化相似度 [0,1]。
-func mergeRRF(vec []dao.SearchResult, kwIDs []int64, topK int) (ordered []int64, similarityByID map[int64]float64) {
-	type acc struct{ score float64 }
-	m := make(map[int64]*acc)
-	for i, sr := range vec {
-		r := i + 1
-		a := m[sr.TargetID]
-		if a == nil {
-			a = &acc{}
-			m[sr.TargetID] = a
-		}
-		a.score += 1.0 / (rrfK + float64(r))
-	}
-	for i, id := range kwIDs {
-		r := i + 1
-		a := m[id]
-		if a == nil {
-			a = &acc{}
-			m[id] = a
-		}
-		a.score += 1.0 / (rrfK + float64(r))
-	}
-	type pair struct {
-		id    int64
-		score float64
-	}
-	pairs := make([]pair, 0, len(m))
-	for id, a := range m {
-		pairs = append(pairs, pair{id: id, score: a.score})
-	}
-	sort.Slice(pairs, func(i, j int) bool {
-		if pairs[i].score != pairs[j].score {
-			return pairs[i].score > pairs[j].score
-		}
-		return pairs[i].id < pairs[j].id
-	})
-	if len(pairs) > topK {
-		pairs = pairs[:topK]
-	}
-	ordered = make([]int64, len(pairs))
-	similarityByID = make(map[int64]float64, len(pairs))
-	for i, p := range pairs {
-		ordered[i] = p.id
-		// 单路第一名约 1/61，乘 61 映射到 ~1；双路更高，截断到 1
-		similarityByID[p.id] = math.Min(1.0, p.score*61.0)
-	}
-	return ordered, similarityByID
-}
 
 func sliceTopK(orderedIDs []int64, simByID map[int64]float64, k int) ([]int64, map[int64]float64) {
 	if k <= 0 {
@@ -282,7 +219,7 @@ func (s *SearchService) SemanticSearch(
 		}
 	}
 
-	fetchN := hybridFetchSize(req.TopK)
+	fetchN := dao.HybridFetchN(req.TopK)
 
 	// 1. 向量检索（多取候选供 RRF 融合）
 	queryVector, err := s.aiClient.GetEmbedding(ctx, req.Query)
@@ -312,7 +249,7 @@ func (s *SearchService) SemanticSearch(
 	}
 
 	// 3. RRF 混合排序（候选池）
-	orderedIDs, simByID := mergeRRF(vecResults, kwIDs, fetchN)
+	orderedIDs, simByID := dao.MergeRRF(vecResults, kwIDs, fetchN)
 	if len(orderedIDs) == 0 {
 		return &dto.SemanticSearchResp{
 			Results: []dto.SearchResultItem{},
