@@ -1100,18 +1100,30 @@ Authorization: Bearer {token}
 
 ### 使用 Docker Compose 启动
 
+**仅起依赖、本机跑后端（开发常用）**
+
 ```bash
-# 启动所有服务（PostgreSQL, Redis, Embedding Service）
-docker-compose up -d
+# 在仓库根目录
+docker compose up -d postgres redis embedding-service rerank
 
-# 进入 backend 目录
 cd backend
-
-# 安装依赖
 go mod tidy
-
-# 运行后端服务
 go run main.go
+```
+
+**全栈含 `api` 容器（改后端后需重建镜像）**
+
+1. 复制 `env.example` 为 `.env`，填写 `APP_AI_CHAT_API_KEY`（大模型 API）。
+2. 在仓库根目录执行：
+
+```bash
+docker compose up -d --build
+```
+
+3. 仅修改后端 Go 代码后，重建并重启 api：
+
+```bash
+docker compose up -d --build api
 ```
 
 服务启动后：

@@ -1,0 +1,104 @@
+services:
+  rerank:
+    build:
+      context: ./backend/rerank-service
+      args:
+        HF_TOKEN: ${HF_TOKEN}
+    container_name: rerank-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  embedding-service:
+    build:
+      context: ./backend/embedding-service
+      args:
+        HF_TOKEN: ${HF_TOKEN}
+    container_name: embedding-service
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    ports:
+      - 5001:5000
+    environment:
+      - MODEL_NAME=all-MiniLM-L6-v2
+
+  postgres:
+    image: ankane/pgvector:latest
+    ports:
+      - 5432:5432
+    volumes:
+      - ./sql/data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=techmemo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 1s
+      retries: 10
+      start_period: 1s
+      timeout: 5s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - 6379:6379
+    volumes:
+      - ./sql/redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      retries: 10
+      start_period: 1s
+      timeout: 5s
+
+  # 改后端代码后：docker compose up -d --build api
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: techmemo-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      APP_SERVER_MODE: release
+      APP_SERVER_HOST: 0.0.0.0
+      APP_DATABASE_HOST: postgres
+      APP_DATABASE_PORT: "5432"
+      APP_DATABASE_USER: postgres
+      APP_DATABASE_PASSWORD: postgres
+      APP_DATABASE_DBNAME: techmemo
+      APP_DATABASE_SSLMODE: disable
+      APP_REDIS_ENABLED: "true"
+      APP_REDIS_HOST: redis
+      APP_REDIS_PORT: "6379"
+      APP_AI_EMBEDDING_BASE_URL: http://embedding-service:5000
+      APP_AI_RERANK_BASE_URL: http://rerank:8001
+      APP_AI_CHAT_PROVIDER: ${APP_AI_CHAT_PROVIDER:-deepseek}
+      APP_AI_CHAT_MODEL: ${APP_AI_CHAT_MODEL:-deepseek-chat}
+      APP_AI_CHAT_BASE_URL: ${APP_AI_CHAT_BASE_URL:-https://api.deepseek.com}
+      APP_AI_CHAT_API_KEY: ${APP_AI_CHAT_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      embedding-service:
+        condition: service_started
+      rerank:
+        condition: service_started

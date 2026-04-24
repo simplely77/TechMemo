@@ -128,6 +128,20 @@ CREATE TABLE chat_message (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 14. 搜索历史表（合并自原 migrations/ 中 search_history 相关变更）
+CREATE TABLE search_history (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    keyword VARCHAR(255) NOT NULL,
+    search_type VARCHAR(32) DEFAULT 'keyword',
+    target_type VARCHAR(32) NOT NULL,
+    last_searched_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_user_keyword_type_target UNIQUE (user_id, keyword, search_type, target_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_time
+    ON search_history (user_id, last_searched_at DESC);
 
 -- 为 embedding 表创建 pgvector 索引以提高语义搜索性能
 -- 注意：IVFFlat 索引需要先有一定量的数据（建议至少 1000 条）才能创建
@@ -155,7 +169,7 @@ CREATE INDEX idx_chat_message_session_id ON chat_message(session_id);
 CREATE INDEX idx_chat_message_created_at ON chat_message(created_at DESC);
 CREATE INDEX idx_chat_message_session_created ON chat_message(session_id,created_at DESC);
 
--- 与 migrations/20260424022426_add_common_btree_indexes.sql 对齐（新库初始化时一并建）
+-- 常用 B-tree 索引（新库初始化时一并建，与按 user_id/外键/任务等查询路径一致）
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON "user" (username);
 CREATE INDEX IF NOT EXISTS idx_note_user_id_created_at_desc ON note (user_id, created_at DESC) WHERE status IS DISTINCT FROM 'deleted';
 CREATE INDEX IF NOT EXISTS idx_note_user_id_category_id ON note (user_id, category_id) WHERE status IS DISTINCT FROM 'deleted';
