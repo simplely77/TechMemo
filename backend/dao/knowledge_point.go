@@ -62,6 +62,9 @@ func (d *KnowledgePointDao) GetKnowledgePointByID(ctx context.Context, id int64)
 }
 
 func (d *KnowledgePointDao) GetKnowledgePointsByIDs(ctx context.Context, ids []int64) ([]*model.KnowledgePoint, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	return d.q.KnowledgePoint.
 		WithContext(ctx).
 		Where(d.q.KnowledgePoint.ID.In(ids...)).
@@ -127,6 +130,30 @@ func (d *KnowledgePointDao) GetRelatedKnowledge(ctx context.Context, knowledgeID
 		Where(d.q.KnowledgeRelation.FromKnowledgeID.Eq(knowledgeID)).
 		Or(d.q.KnowledgeRelation.ToKnowledgeID.Eq(knowledgeID)).
 		Find()
+}
+
+// CountKnowledgePointsByCategoryForUser 按笔记所属分类统计知识点数量（仅统计 source_note 指向未删除笔记的知识点）
+func (d *KnowledgePointDao) CountKnowledgePointsByCategoryForUser(ctx context.Context, userID int64) (map[int64]int64, error) {
+	var rows []struct {
+		CategoryID int64 `gorm:"column:category_id"`
+		Cnt        int64 `gorm:"column:cnt"`
+	}
+	db := d.q.KnowledgePoint.WithContext(ctx).UnderlyingDB().WithContext(ctx)
+	err := db.Raw(`
+		SELECT n.category_id, COUNT(kp.id)::bigint AS cnt
+		FROM knowledge_point kp
+		INNER JOIN note n ON n.id = kp.source_note_id
+		WHERE n.user_id = ? AND n.status != 'deleted'
+		GROUP BY n.category_id
+	`, userID).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]int64, len(rows))
+	for i := range rows {
+		out[rows[i].CategoryID] = rows[i].Cnt
+	}
+	return out, nil
 }
 
 func NewKnowledgePointDao(q *query.Query) *KnowledgePointDao {

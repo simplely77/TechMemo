@@ -342,8 +342,19 @@ func (s *SearchService) buildNoteResults(
 	}
 
 	noteByID := make(map[int64]*model.Note, len(notes))
+	catIDSet := make(map[int64]struct{})
 	for _, n := range notes {
 		noteByID[n.ID] = n
+		catIDSet[n.CategoryID] = struct{}{}
+	}
+	catIDs := make([]int64, 0, len(catIDSet))
+	for cid := range catIDSet {
+		catIDs = append(catIDs, cid)
+	}
+	cats, _ := s.categoryDao.GetCategoriesByIDs(ctx, catIDs)
+	catByID := make(map[int64]*model.Category, len(cats))
+	for _, c := range cats {
+		catByID[c.ID] = c
 	}
 
 	results := make([]dto.SearchResultItem, 0, len(orderedIDs))
@@ -352,7 +363,7 @@ func (s *SearchService) buildNoteResults(
 		if note == nil {
 			continue
 		}
-		category, _ := s.categoryDao.GetCategoryByID(ctx, note.CategoryID)
+		category := catByID[note.CategoryID]
 
 		var item dto.SearchResultItem
 		if rerankRawByID != nil {
@@ -408,8 +419,28 @@ func (s *SearchService) buildKnowledgeResults(
 	}
 
 	kpByID := make(map[int64]*model.KnowledgePoint, len(knowledgePoints))
+	srcNoteIDSet := make(map[int64]struct{})
 	for _, kp := range knowledgePoints {
 		kpByID[kp.ID] = kp
+		if kp.SourceNoteID > 0 {
+			srcNoteIDSet[kp.SourceNoteID] = struct{}{}
+		}
+	}
+	srcNoteIDs := make([]int64, 0, len(srcNoteIDSet))
+	for nid := range srcNoteIDSet {
+		srcNoteIDs = append(srcNoteIDs, nid)
+	}
+	var srcNotes []*model.Note
+	if len(srcNoteIDs) > 0 {
+		var err error
+		srcNotes, err = s.noteDao.GetNotesByIDs(ctx, srcNoteIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+	noteTitleByID := make(map[int64]string, len(srcNotes))
+	for _, n := range srcNotes {
+		noteTitleByID[n.ID] = n.Title
 	}
 
 	results := make([]dto.SearchResultItem, 0, len(orderedIDs))
@@ -420,10 +451,7 @@ func (s *SearchService) buildKnowledgeResults(
 		}
 		var sourceNoteTitle string
 		if kp.SourceNoteID > 0 {
-			note, _ := s.noteDao.GetNoteByID(ctx, kp.SourceNoteID)
-			if note != nil {
-				sourceNoteTitle = note.Title
-			}
+			sourceNoteTitle = noteTitleByID[kp.SourceNoteID]
 		}
 
 		var item dto.SearchResultItem

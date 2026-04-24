@@ -20,25 +20,23 @@ func (s *StatsService) GetCategories(ctx context.Context, userID int64) (*dto.Ge
 	if err != nil {
 		return nil, errors.InternalErr
 	}
-	var categoriesDto = make([]dto.CategoryStats, 0, len(categories))
+	noteCountByCat, err := s.noteDao.CountNotesByCategoryForUser(ctx, userID)
+	if err != nil {
+		return nil, errors.InternalErr
+	}
+	kpCountByCat, err := s.knowledgePointDao.CountKnowledgePointsByCategoryForUser(ctx, userID)
+	if err != nil {
+		return nil, errors.InternalErr
+	}
+	categoriesDto := make([]dto.CategoryStats, 0, len(categories))
 	for _, category := range categories {
-		notes, err := s.noteDao.GetNotesByCid(ctx, category.ID)
-		if err != nil {
-			return nil, errors.InternalErr
-		}
-		var nids = make([]int64, 0, len(notes))
-		for _, note := range notes {
-			nids = append(nids, note.ID)
-		}
-		knowledgePoints, err := s.knowledgePointDao.CountKnowledgePointsByNids(ctx, nids)
-		if err != nil {
-			return nil, errors.InternalErr
-		}
+		nc := noteCountByCat[category.ID]
+		kc := kpCountByCat[category.ID]
 		categoriesDto = append(categoriesDto, dto.CategoryStats{
 			CategoryID:     category.ID,
 			CategoryName:   category.Name,
-			NoteCount:      int64(len(notes)),
-			KnowledgeCount: knowledgePoints,
+			NoteCount:      nc,
+			KnowledgeCount: kc,
 		})
 	}
 	return &dto.GetCategoriesStatsResp{

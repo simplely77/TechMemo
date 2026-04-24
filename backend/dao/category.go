@@ -92,6 +92,14 @@ func (c *CategoryDao) GetCategoriesByUserID(ctx context.Context, userID int64) (
 		Find()
 }
 
+// GetCategoriesByIDs 批量拉取分类（不校验 user_id，调用方需自限用途）
+func (c *CategoryDao) GetCategoriesByIDs(ctx context.Context, ids []int64) ([]*model.Category, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return c.q.Category.WithContext(ctx).Where(c.q.Category.ID.In(ids...)).Find()
+}
+
 func NewCategoryDao(q *query.Query) *CategoryDao {
 	return &CategoryDao{q: q}
 }

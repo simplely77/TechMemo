@@ -346,34 +346,66 @@ func (n *NoteService) GetNotes(ctx context.Context, req *dto.GetNotesReq, userID
 		return nil, errors.InternalErr
 	}
 
+	// 批量取分类、标签，避免对每条笔记各查一次
+	catIDSet := make(map[int64]struct{}, len(notes))
+	noteIDs := make([]int64, 0, len(notes))
+	for _, note := range notes {
+		catIDSet[note.CategoryID] = struct{}{}
+		noteIDs = append(noteIDs, note.ID)
+	}
+	catIDs := make([]int64, 0, len(catIDSet))
+	for cid := range catIDSet {
+		catIDs = append(catIDs, cid)
+	}
+	cats, err := n.categoryDao.GetCategoriesByIDs(ctx, catIDs)
+	if err != nil {
+		return nil, errors.InternalErr
+	}
+	catByID := make(map[int64]*model.Category, len(cats))
+	for _, c := range cats {
+		catByID[c.ID] = c
+	}
+
+	noteTagRows, err := n.noteDao.GetNoteTagsByNoteIDs(ctx, noteIDs)
+	if err != nil {
+		return nil, errors.InternalErr
+	}
+	tagIDsByNoteID := make(map[int64][]int64)
+	allTagIDSet := make(map[int64]struct{})
+	for _, row := range noteTagRows {
+		nid := row.NoteID
+		tid := row.TagID
+		tagIDsByNoteID[nid] = append(tagIDsByNoteID[nid], tid)
+		allTagIDSet[tid] = struct{}{}
+	}
+	allTagIDs := make([]int64, 0, len(allTagIDSet))
+	for tid := range allTagIDSet {
+		allTagIDs = append(allTagIDs, tid)
+	}
+	allTags, err := n.tagDao.GetTagsByTagIDs(ctx, allTagIDs)
+	if err != nil {
+		return nil, errors.InternalErr
+	}
+	tagByID := make(map[int64]*model.Tag, len(allTags))
+	for _, t := range allTags {
+		tagByID[t.ID] = t
+	}
+
 	respNotes := make([]*dto.NoteAbstract, 0, len(notes))
 	for _, note := range notes {
-		category, err := n.categoryDao.GetCategoryByID(ctx, note.CategoryID)
-		if err != nil {
-			return nil, errors.InternalErr
-		}
-		noteCategory := dto.NoteCategory{
-			ID:   category.ID,
-			Name: category.Name,
+		var noteCategory dto.NoteCategory
+		if c := catByID[note.CategoryID]; c != nil {
+			noteCategory = dto.NoteCategory{ID: c.ID, Name: c.Name}
 		}
 
-		tagIDs, err := n.noteDao.GetTagIDsByNoteID(ctx, note.ID)
-		if err != nil {
-			return nil, errors.InternalErr
+		tagIDList := tagIDsByNoteID[note.ID]
+		noteTags := make([]dto.NoteTag, 0, len(tagIDList))
+		for _, tid := range tagIDList {
+			if tg := tagByID[tid]; tg != nil {
+				noteTags = append(noteTags, dto.NoteTag{ID: tg.ID, Name: tg.Name})
+			}
 		}
 
-		tags, err := n.tagDao.GetTagsByTagIDs(ctx, tagIDs)
-		if err != nil {
-			return nil, errors.InternalErr
-		}
-
-		noteTags := make([]dto.NoteTag, 0, len(tags))
-		for _, tag := range tags {
-			noteTags = append(noteTags, dto.NoteTag{
-				ID:   tag.ID,
-				Name: tag.Name,
-			})
-		}
 		respNotes = append(respNotes, &dto.NoteAbstract{
 			ID:        note.ID,
 			Title:     note.Title,

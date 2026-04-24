@@ -154,3 +154,19 @@ ON embedding(target_type, target_id);
 CREATE INDEX idx_chat_message_session_id ON chat_message(session_id);
 CREATE INDEX idx_chat_message_created_at ON chat_message(created_at DESC);
 CREATE INDEX idx_chat_message_session_created ON chat_message(session_id,created_at DESC);
+
+-- 与 migrations/20260424022426_add_common_btree_indexes.sql 对齐（新库初始化时一并建）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON "user" (username);
+CREATE INDEX IF NOT EXISTS idx_note_user_id_created_at_desc ON note (user_id, created_at DESC) WHERE status IS DISTINCT FROM 'deleted';
+CREATE INDEX IF NOT EXISTS idx_note_user_id_category_id ON note (user_id, category_id) WHERE status IS DISTINCT FROM 'deleted';
+CREATE INDEX IF NOT EXISTS idx_knowledge_point_source_note_id ON knowledge_point (source_note_id) WHERE source_note_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_knowledge_point_user_id ON knowledge_point (user_id);
+CREATE INDEX IF NOT EXISTS idx_note_version_note_id_created_at_asc ON note_version (note_id, created_at ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_ai_process_log_source_note_id ON ai_process_log (source_note_id);
+CREATE INDEX IF NOT EXISTS idx_ai_process_log_task_id ON ai_process_log (task_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_relation_from_knowledge_id ON knowledge_relation (from_knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_relation_to_knowledge_id ON knowledge_relation (to_knowledge_id);
+CREATE INDEX IF NOT EXISTS idx_category_user_id ON category (user_id);
+CREATE INDEX IF NOT EXISTS idx_tag_user_id ON tag (user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_session_user_id ON chat_session (user_id);
+CREATE INDEX IF NOT EXISTS idx_note_root_node_note_id ON note_root_node (note_id);

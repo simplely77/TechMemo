@@ -131,6 +131,9 @@ func (n *NoteDao) GetNoteByID(ctx context.Context, id int64) (*model.Note, error
 }
 
 func (n *NoteDao) GetNotesByIDs(ctx context.Context, ids []int64) ([]*model.Note, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	return n.q.Note.
 		WithContext(ctx).
 		Where(n.q.Note.ID.In(ids...)).
@@ -247,6 +250,37 @@ func (n *NoteDao) CreateNote(ctx context.Context, note *model.Note) error {
 	return n.q.Note.
 		WithContext(ctx).
 		Create(note)
+}
+
+// GetNoteTagsByNoteIDs 一次查询多笔记的标签关联，用于避免 GetNotes 中 N+1
+func (n *NoteDao) GetNoteTagsByNoteIDs(ctx context.Context, noteIDs []int64) ([]*model.NoteTag, error) {
+	if len(noteIDs) == 0 {
+		return nil, nil
+	}
+	return n.q.NoteTag.WithContext(ctx).Where(n.q.NoteTag.NoteID.In(noteIDs...)).Find()
+}
+
+// CountNotesByCategoryForUser 按分类统计用户未删除笔记数（有笔记的分类才会出现 key）
+func (n *NoteDao) CountNotesByCategoryForUser(ctx context.Context, userID int64) (map[int64]int64, error) {
+	var rows []struct {
+		CategoryID int64 `gorm:"column:category_id"`
+		Cnt        int64 `gorm:"column:cnt"`
+	}
+	db := n.q.Note.WithContext(ctx).UnderlyingDB().WithContext(ctx)
+	err := db.Raw(`
+		SELECT category_id, COUNT(*)::bigint AS cnt
+		FROM note
+		WHERE user_id = ? AND status != 'deleted'
+		GROUP BY category_id
+	`, userID).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]int64, len(rows))
+	for i := range rows {
+		out[rows[i].CategoryID] = rows[i].Cnt
+	}
+	return out, nil
 }
 
 // PermanentlyDeleteNote 永久删除笔记及其所有关联数据
